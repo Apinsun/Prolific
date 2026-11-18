@@ -113,6 +113,7 @@ def build_mcp(
         negative: str | None = None,
         filename_prefix: str | None = None,
         draft_batch_size: int | None = None,
+        enable_traces: bool = True,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -135,6 +136,7 @@ def build_mcp(
             negative: Prompt négatif (remplace celui du workflow).
             filename_prefix: Sous-dossier de sortie (relatif au output_dir ComfyUI).
             draft_batch_size: Taille max d'un lot de rédaction (None = tout en un appel).
+            enable_traces: Écrire les traces (dataset de fine-tuning). Défaut True.
         """
         if objective_type == "count":
             if not n:
@@ -164,6 +166,7 @@ def build_mcp(
             negative=negative,
             filename_prefix=filename_prefix,
             draft_batch_size=draft_batch_size,
+            enable_traces=enable_traces,
         )
 
     @mcp.tool()
@@ -196,7 +199,28 @@ def build_mcp(
 
     @mcp.tool()
     def delete_job(job_id: int) -> str:
-        """Supprime un job, ses images et ses traces (fichiers si output_dir configuré)."""
+        """Supprime un job et ses images (fichiers si output_dir configuré).
+
+        Les traces sont conservées : utiliser delete_traces pour les retirer,
+        ou purge_job pour tout supprimer.
+        """
+        if db.get_job(job_id) is None:
+            return f"Job {job_id} introuvable."
+        orchestrator.stop(job_id)
+        if config.comfyui.output_dir:
+            out = Path(config.comfyui.output_dir)
+            for img in db.list_images(job_id):
+                if img.get("path"):
+                    try:
+                        (out / img["path"]).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+        db.delete_job(job_id)
+        return f"Job {job_id} supprimé (traces conservées)."
+
+    @mcp.tool()
+    def purge_job(job_id: int) -> str:
+        """Supprime un job, ses images (fichiers) ET ses traces."""
         if db.get_job(job_id) is None:
             return f"Job {job_id} introuvable."
         orchestrator.stop(job_id)
@@ -211,7 +235,7 @@ def build_mcp(
         db.delete_job(job_id)
         if trace_logger is not None:
             trace_logger.delete_job(job_id)
-        return f"Job {job_id} supprimé."
+        return f"Job {job_id} purgé (images + traces)."
 
     @mcp.tool()
     def model_temperature(model: str) -> float | None:

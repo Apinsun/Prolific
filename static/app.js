@@ -61,6 +61,7 @@ function formToPayload() {
     min_words: parseInt($('#min_words').value, 10) || 0,
     random_tags: $('#random_tags').checked,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
+    enable_traces: $('#enable_traces').checked,
   };
 }
 
@@ -89,7 +90,8 @@ async function loadJobDetail(id) {
     ${job.error ? `<p class="error">${escapeHtml(job.error)}</p>` : ''}
     ${running ? '<button id="stop-btn" type="button">Arrêter</button>' : ''}
     <button id="untrace-btn" type="button" class="ghost">Retirer des traces</button>
-    <button id="delete-btn" type="button" class="danger">Supprimer le job</button>
+    <button id="delete-btn" type="button" class="danger">Supprimer le job (garde les traces)</button>
+    <button id="purge-btn" type="button" class="danger">Supprimer job + traces</button>
     <div class="thumbs">
       ${done.map((i) => `<figure><img src="${i.url}" loading="lazy" alt=""><figcaption>${escapeHtml(i.positive)}</figcaption></figure>`).join('') || '<p class="meta">Aucune image générée pour l\'instant.</p>'}
     </div>
@@ -107,8 +109,16 @@ async function loadJobDetail(id) {
   });
   const del = $('#delete-btn');
   if (del) del.addEventListener('click', async () => {
-    if (!confirm('Supprimer le job, ses images (et les fichiers générés si configuré) ainsi que ses traces ?')) return;
+    if (!confirm('Supprimer le job et ses images ? Les traces (dataset de fine-tuning) seront conservées.')) return;
     await api('/jobs/' + id, { method: 'DELETE' });
+    currentJobId = null;
+    $('#job-detail').innerHTML = '<p class="meta">Sélectionne un job pour voir ses images.</p>';
+    loadJobs();
+  });
+  const purge = $('#purge-btn');
+  if (purge) purge.addEventListener('click', async () => {
+    if (!confirm('Supprimer le job, ses images ET ses traces (dataset de fine-tuning) ? Irréversible.')) return;
+    await api('/jobs/' + id + '/purge', { method: 'DELETE' });
     currentJobId = null;
     $('#job-detail').innerHTML = '<p class="meta">Sélectionne un job pour voir ses images.</p>';
     loadJobs();

@@ -39,6 +39,7 @@ class JobCreate(BaseModel):
     seed: int | None = None
     filename_prefix: str | None = None
     draft_batch_size: int | None = None
+    enable_traces: bool = True
 
 
 def build_api(
@@ -137,6 +138,7 @@ def build_api(
             random_tags=payload.random_tags,
             filename_prefix=payload.filename_prefix,
             draft_batch_size=payload.draft_batch_size,
+            enable_traces=payload.enable_traces,
         )
         return {"job_id": job_id}
 
@@ -157,16 +159,38 @@ def build_api(
 
     @router.delete("/jobs/{job_id}/traces")
     def delete_job_traces(job_id: int) -> dict[str, str]:
-        """Retire uniquement les traces (dataset de fine-tuning), garde le job."""
-        if db.get_job(job_id) is None:
-            raise HTTPException(status_code=404, detail="job introuvable")
+        """Retire uniquement les traces (dataset de fine-tuning), garde le job.
+
+        Fonctionne même si le job a déjà été supprimé (les traces sont indépendantes).
+        """
         if trace_logger is not None:
             trace_logger.delete_job(job_id)
         return {"status": "traces_deleted"}
 
     @router.delete("/jobs/{job_id}")
     def delete_job(job_id: int) -> dict[str, str]:
-        """Supprime le job, ses images (et les fichiers si output_dir est configuré)."""
+        """Supprime le job et ses images (fichiers si output_dir configuré).
+
+        Les traces sont conservées : utiliser /jobs/{id}/traces pour les retirer,
+        ou /jobs/{id}/purge pour tout supprimer.
+        """
+        if db.get_job(job_id) is None:
+            raise HTTPException(status_code=404, detail="job introuvable")
+        orchestrator.stop(job_id)
+        if config.comfyui.output_dir:
+            out = Path(config.comfyui.output_dir)
+            for img in db.list_images(job_id):
+                if img.get("path"):
+                    try:
+                        (out / img["path"]).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+        db.delete_job(job_id)
+        return {"status": "deleted"}
+
+    @router.delete("/jobs/{job_id}/purge")
+    def purge_job(job_id: int) -> dict[str, str]:
+        """Supprime le job, ses images (fichiers) ET ses traces."""
         if db.get_job(job_id) is None:
             raise HTTPException(status_code=404, detail="job introuvable")
         orchestrator.stop(job_id)
@@ -181,6 +205,6 @@ def build_api(
         db.delete_job(job_id)
         if trace_logger is not None:
             trace_logger.delete_job(job_id)
-        return {"status": "deleted"}
+        return {"status": "purged"}
 
     return router

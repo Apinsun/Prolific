@@ -67,6 +67,7 @@ class OrchestratorState(TypedDict, total=False):
     random_tags: bool
     filename_prefix: str | None
     draft_batch_size: int | None
+    enable_traces: bool
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -197,6 +198,7 @@ class Orchestrator:
     def _draft(self, state: OrchestratorState) -> dict:
         if state.get("error"):
             return {}
+        trace = self.trace_logger is not None and state.get("enable_traces", True)
         batch_size = state.get("batch_size", 1)
         if batch_size <= 0:
             return {"prompts": [], "continue_loop": False}
@@ -272,7 +274,7 @@ class Orchestrator:
         )
         for i, (p, o) in enumerate(zip(prompts, orientations), 1):
             logger.info("job %s — prompt %d [%s] : %s", state["job_id"], i, o or "?", p)
-        if self.trace_logger is not None:
+        if trace:
             self.trace_logger.log_draft(
                 job_id=state["job_id"],
                 theme=state["theme"],
@@ -299,6 +301,7 @@ class Orchestrator:
         if state.get("error"):
             return {}
 
+        trace = self.trace_logger is not None and state.get("enable_traces", True)
         job_id = state["job_id"]
         prompts = state.get("prompts", [])
         orientations = state.get("orientations", [])
@@ -419,7 +422,7 @@ class Orchestrator:
                         generated += 1
                         self.db.update_job(job_id, images_done=generated)
                         logger.info("job %s — image %s ok (%.1fs)", job_id, iid, per_image)
-                        if self.trace_logger is not None:
+                        if trace:
                             self.trace_logger.log_image(
                                 job_id=job_id,
                                 image_id=iid,
@@ -438,7 +441,7 @@ class Orchestrator:
                         iid = image_ids[j]
                         msg = "image absente du résultat ComfyUI"
                         self.db.update_image(iid, status="failed", error=msg)
-                        if self.trace_logger is not None:
+                        if trace:
                             self.trace_logger.log_image(
                                 job_id=job_id,
                                 image_id=iid,
@@ -454,7 +457,7 @@ class Orchestrator:
                     for iid in image_ids:
                         self.db.update_image(iid, status="failed", error=str(exc))
                     logger.warning("job %s — lot échoué : %s", job_id, exc)
-                    if self.trace_logger is not None:
+                    if trace:
                         for iid in image_ids:
                             self.trace_logger.log_image(
                                 job_id=job_id,
@@ -550,6 +553,7 @@ class Orchestrator:
         random_tags: bool = False,
         filename_prefix: str | None = None,
         draft_batch_size: int | None = None,
+        enable_traces: bool = True,
     ) -> int:
         """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -601,6 +605,7 @@ class Orchestrator:
             "random_tags": random_tags,
             "filename_prefix": filename_prefix,
             "draft_batch_size": draft_batch_size,
+            "enable_traces": enable_traces,
         }
 
         self._stop_events[job_id] = threading.Event()
