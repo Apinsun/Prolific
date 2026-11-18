@@ -154,6 +154,14 @@ def dedupe(prompts: list[str], history: list[str]) -> list[str]:
     return out
 
 
+def compose_positive(positive: str, suffix: str | None, style: str = "tags") -> str:
+    """Concatène un suffixe au prompt positif (séparateur selon le style)."""
+    if not suffix:
+        return positive
+    separator = " " if style == "prose" else ", "
+    return f"{positive}{separator}{suffix.strip()}"
+
+
 def normalize_draft(raw: str, style: str = "tags") -> list[str]:
     """Transforme la sortie brute du LLM en liste de prompts nettoyés."""
     data = _extract_json(raw)

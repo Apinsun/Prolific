@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prolific — génération en masse</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Prolific</h1>
+    <span class="subtitle">génération d'images en masse — LLM + ComfyUI</span>
+  </header>
+
+  <main>
+    <section id="panel-form">
+      <h2>Nouveau job</h2>
+      <form id="job-form">
+        <label>Thème / prompt
+          <textarea id="theme" rows="3" placeholder="ex : femmes dragons dans une forêt magique" required></textarea>
+        </label>
+
+        <div class="grid-2">
+          <label>Workflow
+            <select id="workflow"></select>
+          </label>
+          <label>Modèle (LLM)
+            <select id="model"></select>
+          </label>
+        </div>
+
+        <fieldset>
+          <legend>Objectif</legend>
+          <label class="inline"><input type="radio" name="objective_type" value="count" checked> Nombre d'images</label>
+          <label class="inline"><input type="radio" name="objective_type" value="duration"> Durée (minutes)</label>
+          <div class="objective-input">
+            <label>Nombre d'images <input type="number" id="n" min="1" value="10"></label>
+          </div>
+          <div class="objective-input" id="duration-wrap" hidden>
+            <label>Durée (minutes) <input type="number" id="minutes" min="1" value="20"></label>
+          </div>
+        </fieldset>
+
+        <div class="grid-2">
+          <label>Orientation
+            <select id="orientation">
+              <option value="carre">Carré</option>
+              <option value="paysage">Paysage</option>
+              <option value="portrait">Portrait</option>
+            </select>
+          </label>
+          <label>Type de prompt
+            <select id="style">
+              <option value="tags">Tags (danbooru)</option>
+              <option value="prose">Langage naturel</option>
+              <option value="hybrid">Les deux</option>
+            </select>
+          </label>
+        </div>
+
+        <label>Datasets RAG (recherche de termes)
+          <div id="datasets" class="checks"></div>
+        </label>
+
+        <label>Suffixe positif (concaténé au prompt)
+          <input id="positive_suffix" placeholder="ex : masterpiece, best quality">
+        </label>
+        <label>Prompt négatif (remplace celui du workflow)
+          <textarea id="negative" rows="2" placeholder="ex : lowres, bad anatomy"></textarea>
+        </label>
+
+        <label class="inline"><input type="checkbox" id="swap_vram"> Swap VRAM (LLM ↔ modèle d'image)</label>
+        <label>Seed (optionnel) <input type="number" id="seed" placeholder="aléatoire"></label>
+
+        <button type="submit" id="submit-btn">Lancer</button>
+      </form>
+    </section>
+
+    <section id="panel-jobs">
+      <div class="jobs-head">
+        <h2>Jobs</h2>
+        <button id="refresh-btn" class="ghost" type="button">Rafraîchir</button>
+      </div>
+      <ul id="job-list"></ul>
+      <div id="job-detail"><p class="meta">Sélectionne un job pour voir ses images.</p></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

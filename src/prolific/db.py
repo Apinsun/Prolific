@@ -21,9 +21,11 @@ CREATE TABLE IF NOT EXISTS jobs (
     style         TEXT,
     orientation   TEXT NOT NULL DEFAULT 'carre',
     datasets      TEXT NOT NULL DEFAULT '[]',
-    swap_vram     INTEGER NOT NULL DEFAULT 0,
-    seed          TEXT,
-    images_target INTEGER,
+    swap_vram         INTEGER NOT NULL DEFAULT 0,
+    seed              TEXT,
+    positive_suffix   TEXT,
+    negative          TEXT,
+    images_target     INTEGER,
     images_done   INTEGER NOT NULL DEFAULT 0,
     error         TEXT,
     created_at    TEXT NOT NULL,
@@ -60,6 +62,25 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def serialize_job(row: dict[str, Any]) -> dict[str, Any]:
+    """Décode les colonnes stockées en JSON texte (objective, datasets) en objets."""
+    out = dict(row)
+    for field in ("objective", "datasets"):
+        if field in out and isinstance(out[field], str):
+            try:
+                out[field] = json.loads(out[field])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return out
+
+
+# colonnes ajoutées après coup : migration légère pour les bases existantes
+_COLUMN_MIGRATIONS = [
+    ("jobs", "positive_suffix", "TEXT"),
+    ("jobs", "negative", "TEXT"),
+]
+
+
 class Database:
     """Petit wrapper sqlite3 : une connexion par opération, verrou global."""
 
@@ -69,9 +90,17 @@ class Database:
         conn = self._connect()
         try:
             conn.executescript(_SCHEMA)
+            self._migrate(conn)
             conn.commit()
         finally:
             conn.close()
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Ajoute les colonnes manquantes sur une base existante."""
+        for table, column, ctype in _COLUMN_MIGRATIONS:
+            cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if column not in cols:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ctype}")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30)
@@ -119,14 +148,17 @@ class Database:
         datasets: list[str] | None = None,
         swap_vram: bool = False,
         seed: str | None = None,
+        positive_suffix: str | None = None,
+        negative: str | None = None,
         images_target: int | None = None,
     ) -> int:
         now = _now()
         return self._write(
             """INSERT INTO jobs
                (objective, theme, workflow, style, orientation, datasets,
-                swap_vram, seed, images_target, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                swap_vram, seed, positive_suffix, negative, images_target,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
                 theme,
@@ -136,6 +168,8 @@ class Database:
                 json.dumps(datasets or []),
                 int(swap_vram),
                 seed,
+                positive_suffix,
+                negative,
                 images_target,
                 now,
                 now,

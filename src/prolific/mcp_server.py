@@ -5,28 +5,15 @@ Transport : Streamable HTTP (monté sur le même process FastAPI, chemin `/mcp`)
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastmcp import FastMCP
 
-from prolific.db import Database
+from prolific.db import Database, serialize_job
 from prolific.orchestrator import Orchestrator
 from prolific.rag import RagIndex
 
 MCP_NAME = "prolific"
-
-
-def _serialize_job(row: dict[str, Any]) -> dict[str, Any]:
-    """Décode les colonnes stockées en JSON texte (objective, datasets)."""
-    out = dict(row)
-    for field in ("objective", "datasets"):
-        if field in out and isinstance(out[field], str):
-            try:
-                out[field] = json.loads(out[field])
-            except (json.JSONDecodeError, TypeError):
-                pass
-    return out
 
 
 def build_mcp(
@@ -136,14 +123,14 @@ def build_mcp(
         job = db.get_job(job_id)
         if job is None:
             return {"error": f"job {job_id} introuvable"}
-        job = _serialize_job(job)
+        job = serialize_job(job)
         job["images"] = db.list_images(job_id)
         return job
 
     @mcp.tool()
     def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
         """Liste les jobs récents (du plus récent au plus ancien)."""
-        return [_serialize_job(job) for job in db.list_jobs(limit)]
+        return [serialize_job(job) for job in db.list_jobs(limit)]
 
     @mcp.tool()
     def stop_job(job_id: int) -> str:

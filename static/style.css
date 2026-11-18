@@ -1,0 +1,123 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --border: #2a2f3a;
+  --text: #e6e6e6;
+  --muted: #8892a3;
+  --accent: #4da6ff;
+  --input: #0d0f13;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+header h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; }
+.subtitle { color: var(--muted); font-size: 13px; }
+
+main {
+  display: grid;
+  grid-template-columns: 440px 1fr;
+  gap: 24px;
+  padding: 24px;
+  align-items: start;
+}
+
+#panel-form, #panel-jobs {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+h2 { margin: 0 0 16px; font-size: 16px; }
+
+label { display: block; margin-bottom: 12px; color: #b8bfcc; font-size: 13px; }
+input, textarea, select {
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+textarea { resize: vertical; }
+select { cursor: pointer; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 14px; padding: 10px 12px; }
+legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
+fieldset label.inline { margin-bottom: 6px; }
+
+.inline { display: flex; align-items: center; gap: 8px; }
+.inline input { width: auto; margin-top: 0; }
+
+.checks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.check {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; margin: 0;
+  background: var(--input); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px;
+}
+.check input { width: auto; margin: 0; }
+
+button {
+  background: var(--accent);
+  color: #0d0f13;
+  border: none; border-radius: 6px;
+  padding: 10px 16px; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+
+.jobs-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.jobs-head h2 { margin: 0; }
+
+#job-list { list-style: none; margin: 0 0 16px; padding: 0; max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+#job-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+#job-list li:last-child { border-bottom: none; }
+#job-list li:hover { background: #1d222c; }
+.job-id { color: var(--muted); font-variant-numeric: tabular-nums; }
+.job-theme { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-progress { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.badge {
+  padding: 2px 8px; border-radius: 10px; font-size: 11px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.badge.running { background: #1d3a5f; color: #7cc0ff; }
+.badge.done { background: #1f3d2b; color: #7fe0a0; }
+.badge.failed { background: #3d1f1f; color: #ff8a8a; }
+.badge.stopped { background: #3d3520; color: #ffd08a; }
+.badge.pending { background: #333; color: #ccc; }
+
+#job-detail h3 { margin: 0 0 8px; font-size: 15px; }
+.meta { color: var(--muted); font-size: 12px; }
+.error { color: #ff8a8a; font-size: 13px; }
+#stop-btn { background: #d9534f; margin-bottom: 12px; }
+
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-top: 12px; }
+.thumbs figure { margin: 0; }
+.thumbs img { width: 100%; border-radius: 6px; border: 1px solid var(--border); background: #000; }
+.thumbs figcaption { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-word; }

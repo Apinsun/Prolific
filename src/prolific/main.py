@@ -6,7 +6,10 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
+from prolific.api import build_api
 from prolific.clients.comfyui import ComfyUIClient
 from prolific.clients.ollama import OllamaClient
 from prolific.config import load_config
@@ -17,10 +20,11 @@ from prolific.rag import RagIndex
 from prolific.workflows import load_manifest
 
 WORKFLOWS_DIR = Path("workflows")
+STATIC_DIR = Path("static")
 
 
 def create_app() -> FastAPI:
-    """Construit l'application : dépendances + FastAPI + MCP monté sur /mcp."""
+    """Construit l'application : dépendances + FastAPI + UI + MCP monté sur /mcp."""
     config = load_config()
     db = Database()
     ollama = OllamaClient(config.llm.base_url)
@@ -38,6 +42,14 @@ def create_app() -> FastAPI:
         manifest=manifest,
     )
 
+    api = build_api(
+        config=config,
+        db=db,
+        ollama=ollama,
+        rag=rag,
+        manifest=manifest,
+        orchestrator=orchestrator,
+    )
     mcp = build_mcp(orchestrator=orchestrator, db=db, rag=rag, manifest=manifest)
     mcp_app = mcp.http_app(path="/", transport="streamable-http")
 
@@ -45,9 +57,18 @@ def create_app() -> FastAPI:
     # sessions Streamable HTTP n'est pas initialisé).
     app = FastAPI(title="Prolific", version="0.1.0", lifespan=mcp_app.lifespan)
 
+    app.include_router(api, prefix="/api")
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    if STATIC_DIR.exists():
+        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/")
+    def index() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
 
     # MCP en Streamable HTTP, accessible sur http://<host>:<port>/mcp
     app.mount("/mcp", mcp_app)

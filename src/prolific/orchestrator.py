@@ -31,7 +31,7 @@ from prolific.clients.comfyui import ComfyUIClient
 from prolific.clients.ollama import OllamaClient
 from prolific.config import Config
 from prolific.db import Database
-from prolific.prompting import PROMPTS_DIR, dedupe
+from prolific.prompting import PROMPTS_DIR, compose_positive, dedupe
 from prolific.rag import RagIndex
 from prolific.tools import make_search_terms_tool
 from prolific.workflows import patch_workflow, resolve_format
@@ -49,6 +49,8 @@ class OrchestratorState(TypedDict, total=False):
     swap_vram: bool
     model: str
     seed: int | None
+    positive_suffix: str | None
+    negative: str | None
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -242,18 +244,23 @@ class Orchestrator:
                 width, height = resolve_format(
                     self.manifest, state["workflow"], state.get("orientation", "carre")
                 )
+                positive = compose_positive(
+                    prompt, state.get("positive_suffix"), state.get("style", "tags")
+                )
+                negative = state.get("negative")
                 wf = patch_workflow(
                     self.manifest,
                     self.workflows_dir,
                     state["workflow"],
-                    positive=prompt,
+                    positive=positive,
+                    negative=negative,
                     orientation=state.get("orientation", "carre"),
                     seed=state.get("seed"),
                 )
                 image_id = self.db.add_image(
                     job_id,
-                    positive=prompt,
-                    negative=None,
+                    positive=positive,
+                    negative=negative,
                     seed=state.get("seed"),
                     width=width,
                     height=height,
@@ -359,6 +366,9 @@ class Orchestrator:
         datasets: list[str] | None = None,
         swap_vram: bool = False,
         seed: int | None = None,
+        model: str | None = None,
+        positive_suffix: str | None = None,
+        negative: str | None = None,
     ) -> int:
         """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -375,6 +385,8 @@ class Orchestrator:
             datasets=datasets or [],
             swap_vram=swap_vram,
             seed=str(seed) if seed is not None else None,
+            positive_suffix=positive_suffix,
+            negative=negative,
             images_target=images_target,
         )
         self.db.update_job(job_id, status="running", started_at=_now())
@@ -388,8 +400,10 @@ class Orchestrator:
             "orientation": orientation,
             "datasets": datasets or [],
             "swap_vram": swap_vram,
-            "model": self.config.llm.model,
+            "model": model or self.config.llm.model,
             "seed": seed,
+            "positive_suffix": positive_suffix,
+            "negative": negative,
         }
 
         self._stop_events[job_id] = threading.Event()
