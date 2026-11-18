@@ -1,0 +1,3 @@
+Chaque prompt est une description en langage naturel, en une seule phrase.
+Décris le sujet, son apparence, la pose, l'éclairage, le décor et le style.
+Pas de liste de mots-clés.

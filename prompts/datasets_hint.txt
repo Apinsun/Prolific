@@ -1,0 +1,3 @@
+Tu as accès à l'outil search_terms(concept, top_k) pour trouver des termes précis.
+Datasets disponibles : $datasets.
+Utilise-le pour enrichir tes prompts avec des termes réels (pas inventés).

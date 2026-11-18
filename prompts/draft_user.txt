@@ -1,0 +1,2 @@
+Rédige exactement $n prompts distincts sur le thème :
+« $theme »

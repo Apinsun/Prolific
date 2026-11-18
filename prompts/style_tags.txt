@@ -1,0 +1,3 @@
+Chaque prompt est une ligne de tags séparés par des virgules, sans phrase.
+Ordonne les tags : sujet → attributs → tenue → action/pose → cadrage → décor → style → qualité.
+N'utilise que des tags, pas de texte descriptif.
