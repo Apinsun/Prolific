@@ -184,26 +184,47 @@ def compose_positive(positive: str, suffix: str | None, style: str = "tags") -> 
     return result
 
 
-def normalize_draft(raw: str, style: str = "tags") -> list[str]:
-    """Transforme la sortie brute du LLM en liste de prompts nettoyés."""
+def normalize_draft_full(
+    raw: str, style: str = "tags"
+) -> tuple[list[str], list[str | None]]:
+    """Transforme la sortie brute en (prompts nettoyés, orientations par prompt)."""
     data = _extract_json(raw)
 
+    raw_prompts: list[str] = []
+    orientations: list[str | None] = []
+
     if isinstance(data, list):
-        prompts = [clean_prompt(str(p), style) for p in data]
+        raw_prompts = [str(p) for p in data]
     elif isinstance(data, dict) and isinstance(data.get("prompts"), list):
-        prompts = [clean_prompt(str(p), style) for p in data["prompts"]]
-    else:
-        prompts = []
+        raw_prompts = [str(p) for p in data["prompts"]]
+        orient_list = data.get("orientations")
+        if isinstance(orient_list, list) and len(orient_list) == len(raw_prompts):
+            orientations = [
+                o if o in ("carre", "paysage", "portrait") else None
+                for o in orient_list
+            ]
 
-    prompts = [p for p in prompts if p]
+    cleaned = [clean_prompt(p, style) for p in raw_prompts]
+    prompts: list[str] = []
+    kept_orientations: list[str | None] = []
+    for i, p in enumerate(cleaned):
+        if p:
+            prompts.append(p)
+            kept_orientations.append(orientations[i] if orientations else None)
+
     if prompts:
-        return prompts
+        return prompts, kept_orientations
 
-    # repli : une ligne = un prompt
+    # repli : une ligne = un prompt (sans orientation)
     prompts = [p for p in (clean_prompt(line, style) for line in raw.splitlines()) if p]
     if not prompts:
         raise PromptingError("Aucun prompt exploitable dans la sortie du LLM.")
-    return prompts
+    return prompts, [None] * len(prompts)
+
+
+def normalize_draft(raw: str, style: str = "tags") -> list[str]:
+    """Rétrocompat : retourne seulement les prompts (sans les orientations)."""
+    return normalize_draft_full(raw, style)[0]
 
 
 def normalize_prompt(raw: str, style: str = "tags") -> Prompt:

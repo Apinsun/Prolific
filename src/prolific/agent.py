@@ -12,7 +12,7 @@ from prolific.prompting import (
     PROMPTS_DIR,
     build_draft_system,
     build_draft_user,
-    normalize_draft,
+    normalize_draft_full,
 )
 
 MAX_TOOL_ITERATIONS = 6
@@ -30,11 +30,12 @@ def draft_prompts_agent(
     datasets: list[str] | None = None,
     history: list[str] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
-) -> list[str]:
-    """Rédige `n` prompts sur un thème via une boucle LLM↔outils, puis normalise.
+) -> tuple[list[str], list[str | None]]:
+    """Rédige `n` prompts via une boucle LLM↔outils, puis normalise.
 
-    Le LLM peut appeler les outils fournis (ex. search_terms) autant de fois que
-    nécessaire, puis doit produire le JSON final {"prompts": [...]} qui est normalisé.
+    Retourne (prompts, orientations). Le LLM peut appeler les outils fournis
+    (ex. search_terms) autant de fois que nécessaire, puis produire le JSON final
+    {"prompts": [...], "orientations": [...]}.
     """
     system = build_draft_system(style=style, datasets=datasets, prompts_dir=prompts_dir)
     user = build_draft_user(n=n, theme=theme, history=history, prompts_dir=prompts_dir)
@@ -60,7 +61,7 @@ def draft_prompts_agent(
             messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
 
     if resp is None:
-        return normalize_draft("", style)
+        return normalize_draft_full("", style)
 
     raw = resp.content if isinstance(resp.content, str) else str(resp.content)
-    return normalize_draft(raw, style)
+    return normalize_draft_full(raw, style)

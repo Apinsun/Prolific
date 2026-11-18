@@ -7,6 +7,8 @@ $datasets_hint
 Règles générales :
 - Varie les sujets, les cadrages, les poses, l'éclairage et les ambiances.
 - Ne répète pas deux fois le même concept.
+- Pour chaque prompt, choisis l'orientation (carre, paysage ou portrait) qui convient
+  le mieux à la composition décrite.
 
 Réponds UNIQUEMENT au format JSON :
-{"prompts": ["...", "..."]}
+{"prompts": ["...", "..."], "orientations": ["carre", "paysage", ...]}

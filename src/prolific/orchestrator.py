@@ -34,7 +34,7 @@ from prolific.clients.comfyui import ComfyUIClient
 from prolific.clients.ollama import OllamaClient
 from prolific.config import Config
 from prolific.db import Database
-from prolific.prompting import PROMPTS_DIR, compose_positive, dedupe
+from prolific.prompting import PROMPTS_DIR, compose_positive
 from prolific.rag import RagIndex
 from prolific.tools import make_search_terms_tool
 from prolific.workflows import patch_workflow, resolve_format
@@ -62,6 +62,7 @@ class OrchestratorState(TypedDict, total=False):
     # état d'exécution (construit au fil du graphe)
     batch_size: int
     prompts: list[str]
+    orientations: list[str | None]
     generated: int
     target: int | None
     deadline: float | None     # timestamp monotonic de fin (mode durée)
@@ -205,7 +206,7 @@ class Orchestrator:
         )
 
         try:
-            prompts = draft_prompts_agent(
+            prompts, orientations = draft_prompts_agent(
                 llm,
                 tools,
                 n=batch_size,
@@ -223,15 +224,31 @@ class Orchestrator:
                 "continue_loop": False,
             }
 
-        prompts = dedupe(prompts, history)
+        # dédoublonnage en préservant l'alignement prompts/orientations
+        seen = set(history)
+        kept_prompts: list[str] = []
+        kept_orientations: list[str | None] = []
+        for p, o in zip(prompts, orientations):
+            if p in seen:
+                continue
+            seen.add(p)
+            kept_prompts.append(p)
+            kept_orientations.append(o)
+        prompts = kept_prompts
+        orientations = kept_orientations
+
         logger.info(
             "job %s — %d prompts retenus après dédoublonnage", state["job_id"], len(prompts)
         )
-        for i, p in enumerate(prompts, 1):
-            logger.info("job %s — prompt %d : %s", state["job_id"], i, p)
+        for i, (p, o) in enumerate(zip(prompts, orientations), 1):
+            logger.info("job %s — prompt %d [%s] : %s", state["job_id"], i, o or "?", p)
         if not prompts and batch_size > 0:
-            return {"prompts": [], "stalled": state.get("stalled", 0) + 1}
-        return {"prompts": prompts, "stalled": 0}
+            return {
+                "prompts": [],
+                "orientations": [],
+                "stalled": state.get("stalled", 0) + 1,
+            }
+        return {"prompts": prompts, "orientations": orientations, "stalled": 0}
 
     def _generate(self, state: OrchestratorState) -> dict:
         if state.get("error"):
@@ -239,6 +256,7 @@ class Orchestrator:
 
         job_id = state["job_id"]
         prompts = state.get("prompts", [])
+        orientations = state.get("orientations", [])
         swap = state.get("swap_vram", False)
         model = state.get("model") or self.config.llm.model
         generated = state.get("generated", 0)
@@ -257,11 +275,16 @@ class Orchestrator:
         durations: list[float] = []
         stop_batch = False
         try:
-            for prompt in prompts:
+            for idx, prompt in enumerate(prompts):
                 if stop_batch:
                     break
+                prompt_orientation = orientations[idx] if idx < len(orientations) else None
+                if state.get("orientation") == "auto":
+                    orientation = prompt_orientation or "carre"
+                else:
+                    orientation = state.get("orientation", "carre")
                 width, height = resolve_format(
-                    self.manifest, state["workflow"], state.get("orientation", "carre")
+                    self.manifest, state["workflow"], orientation
                 )
                 positive = compose_positive(
                     prompt, state.get("positive_suffix"), state.get("style", "tags")
