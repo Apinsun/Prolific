@@ -60,6 +60,7 @@ class OrchestratorState(TypedDict, total=False):
     temperature: float | None
     batch: int
     min_words: int
+    random_tags: bool
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -201,16 +202,20 @@ class Orchestrator:
 
         datasets = state.get("datasets", [])
         tools = [make_search_terms_tool(self.rag, datasets)] if datasets else []
+        random_terms: list[str] = []
+        if state.get("random_tags") and datasets:
+            random_terms = self.rag.random_terms(datasets, k=5)
         model = state.get("model") or self.config.llm.model
         temperature = state.get("temperature")  # None = défaut du modèle Ollama
         llm = self._llm_factory(model, temperature)
         logger.info(
-            "job %s — rédaction de %d prompts (style=%s datasets=%s temperature=%s)",
+            "job %s — rédaction de %d prompts (style=%s datasets=%s temp=%s random=%d)",
             state["job_id"], batch_size, state.get("style"), datasets, temperature,
+            len(random_terms),
         )
 
         try:
-            prompts, orientations, tool_calls = draft_prompts_agent(
+            prompts, orientations, tool_calls, conversation = draft_prompts_agent(
                 llm,
                 tools,
                 n=batch_size,
@@ -219,6 +224,7 @@ class Orchestrator:
                 datasets=datasets,
                 history=history,
                 min_words=state.get("min_words", 0),
+                random_terms=random_terms,
                 prompts_dir=self.prompts_dir,
             )
         except Exception as exc:  # noqa: BLE001 — on capture tout pour tracer le job
@@ -258,6 +264,7 @@ class Orchestrator:
                 prompts=prompts,
                 orientations=orientations,
                 tool_calls=tool_calls,
+                conversation=conversation,
             )
         if not prompts and batch_size > 0:
             return {
@@ -494,6 +501,7 @@ class Orchestrator:
         temperature: float | None = None,
         batch: int = 1,
         min_words: int = 0,
+        random_tags: bool = False,
     ) -> int:
         """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -517,6 +525,7 @@ class Orchestrator:
             temperature=temperature,
             batch=batch,
             min_words=min_words,
+            random_tags=random_tags,
             images_target=images_target,
         )
         self.db.update_job(job_id, status="running", started_at=_now())
@@ -541,6 +550,7 @@ class Orchestrator:
             "temperature": temperature,
             "batch": batch,
             "min_words": min_words,
+            "random_tags": random_tags,
         }
 
         self._stop_events[job_id] = threading.Event()

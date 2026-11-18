@@ -50,6 +50,7 @@ def build_draft_system(
     *,
     style: str = "tags",
     datasets: list[str] | None = None,
+    random_terms: list[str] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
 ) -> str:
     style_file = _STYLE_FILES.get(style, _STYLE_FILES["tags"])
@@ -63,10 +64,19 @@ def build_draft_system(
     else:
         hint = ""
 
+    if random_terms:
+        random_hint = _render(
+            load_template("random_hint.txt", prompts_dir),
+            terms=", ".join(random_terms),
+        )
+    else:
+        random_hint = ""
+
     return _render(
         load_template("draft_system.txt", prompts_dir),
         style_directive=style_directive,
         datasets_hint=hint,
+        random_hint=random_hint,
     )
 
 

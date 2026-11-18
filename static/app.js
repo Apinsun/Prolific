@@ -31,6 +31,11 @@ async function loadConfig() {
   $('#datasets').innerHTML = cfg.datasets.length
     ? cfg.datasets.map((d) => `<label class="check"><input type="checkbox" name="dataset" value="${d}"> ${escapeHtml(d)}</label>`).join('')
     : '<em>Aucun dataset indexé.</em>';
+  $('#datasets').addEventListener('change', () => {
+    const any = document.querySelectorAll('input[name="dataset"]:checked').length > 0;
+    $('#random_tags').disabled = !any;
+    if (!any) $('#random_tags').checked = false;
+  });
 }
 
 function formToPayload() {
@@ -52,6 +57,7 @@ function formToPayload() {
     temperature: $('#temperature').value ? parseFloat($('#temperature').value) : null,
     batch: parseInt($('#batch').value, 10) || 1,
     min_words: parseInt($('#min_words').value, 10) || 0,
+    random_tags: $('#random_tags').checked,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
   };
 }
@@ -80,6 +86,7 @@ async function loadJobDetail(id) {
     <p class="meta">workflow : ${escapeHtml(job.workflow)} · style : ${escapeHtml(job.style ?? '—')} · ${job.images_done}/${job.images_target ?? '—'} images</p>
     ${job.error ? `<p class="error">${escapeHtml(job.error)}</p>` : ''}
     ${running ? '<button id="stop-btn" type="button">Arrêter</button>' : ''}
+    <button id="delete-btn" type="button" class="ghost">Supprimer</button>
     <div class="thumbs">
       ${done.map((i) => `<figure><img src="${i.url}" loading="lazy" alt=""><figcaption>${escapeHtml(i.positive)}</figcaption></figure>`).join('') || '<p class="meta">Aucune image générée pour l\'instant.</p>'}
     </div>
@@ -88,6 +95,14 @@ async function loadJobDetail(id) {
   if (stop) stop.addEventListener('click', async () => {
     await api('/jobs/' + id + '/stop', { method: 'POST' });
     loadJobDetail(id);
+  });
+  const del = $('#delete-btn');
+  if (del) del.addEventListener('click', async () => {
+    if (!confirm('Supprimer ce job, ses images et ses traces ?')) return;
+    await api('/jobs/' + id, { method: 'DELETE' });
+    currentJobId = null;
+    $('#job-detail').innerHTML = '<p class="meta">Sélectionne un job pour voir ses images.</p>';
+    loadJobs();
   });
   attachLightbox();
 }

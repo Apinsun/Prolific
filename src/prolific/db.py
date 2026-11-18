@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     temperature       REAL,
     batch             INTEGER NOT NULL DEFAULT 1,
     min_words         INTEGER NOT NULL DEFAULT 0,
+    random_tags       INTEGER NOT NULL DEFAULT 0,
     images_target     INTEGER,
     images_done   INTEGER NOT NULL DEFAULT 0,
     error         TEXT,
@@ -84,6 +85,7 @@ _COLUMN_MIGRATIONS = [
     ("jobs", "temperature", "REAL"),
     ("jobs", "batch", "INTEGER NOT NULL DEFAULT 1"),
     ("jobs", "min_words", "INTEGER NOT NULL DEFAULT 0"),
+    ("jobs", "random_tags", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -159,6 +161,7 @@ class Database:
         temperature: float | None = None,
         batch: int = 1,
         min_words: int = 0,
+        random_tags: bool = False,
         images_target: int | None = None,
     ) -> int:
         now = _now()
@@ -166,8 +169,8 @@ class Database:
             """INSERT INTO jobs
                (objective, theme, workflow, style, orientation, datasets,
                 swap_vram, seed, positive_suffix, negative, temperature, batch, min_words,
-                images_target, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                random_tags, images_target, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
                 theme,
@@ -182,6 +185,7 @@ class Database:
                 temperature,
                 batch,
                 min_words,
+                int(random_tags),
                 images_target,
                 now,
                 now,
@@ -250,6 +254,17 @@ class Database:
         params.append(_now())
         params.append(job_id)
         self._write(f"UPDATE jobs SET {', '.join(sets)} WHERE id = ?", tuple(params))
+
+    def delete_job(self, job_id: int) -> None:
+        """Supprime un job et ses images."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute("DELETE FROM images WHERE job_id = ?", (job_id,))
+                conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+                conn.commit()
+            finally:
+                conn.close()
 
     # ── images ──────────────────────────────────────────────────────
     def add_image(

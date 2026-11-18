@@ -12,6 +12,7 @@ from prolific.config import Config
 from prolific.db import Database, serialize_job
 from prolific.orchestrator import Orchestrator
 from prolific.rag import RagIndex
+from prolific.traces import TraceLogger
 
 STYLES = ["tags", "prose", "hybrid"]
 ORIENTATIONS = ["carre", "paysage", "portrait", "random", "auto"]
@@ -33,6 +34,7 @@ class JobCreate(BaseModel):
     temperature: float | None = None
     batch: int = 1
     min_words: int = 0
+    random_tags: bool = False
     seed: int | None = None
 
 
@@ -44,6 +46,7 @@ def build_api(
     rag: RagIndex,
     manifest: dict[str, Any],
     orchestrator: Orchestrator,
+    trace_logger: TraceLogger | None = None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -128,6 +131,7 @@ def build_api(
             temperature=payload.temperature,
             batch=payload.batch,
             min_words=payload.min_words,
+            random_tags=payload.random_tags,
         )
         return {"job_id": job_id}
 
@@ -145,5 +149,15 @@ def build_api(
             raise HTTPException(status_code=404, detail="job introuvable")
         orchestrator.stop(job_id)
         return {"status": "stopping"}
+
+    @router.delete("/jobs/{job_id}")
+    def delete_job(job_id: int) -> dict[str, str]:
+        if db.get_job(job_id) is None:
+            raise HTTPException(status_code=404, detail="job introuvable")
+        orchestrator.stop(job_id)
+        db.delete_job(job_id)
+        if trace_logger is not None:
+            trace_logger.delete_job(job_id)
+        return {"status": "deleted"}
 
     return router

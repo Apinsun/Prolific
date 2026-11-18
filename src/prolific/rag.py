@@ -7,6 +7,7 @@ sa propre collection ChromaDB `rag_<nom>`. Embeddings via Ollama (`/api/embed`).
 from __future__ import annotations
 
 import csv
+import random
 from pathlib import Path
 from typing import Any
 
@@ -129,6 +130,28 @@ class RagIndex:
             for c in self.client.list_collections()
             if c.name.startswith(prefix)
         )
+
+    def random_terms(self, datasets: list[str], k: int = 5) -> list[str]:
+        """Tire jusqu'à k termes aléatoires dans les datasets (pour varier les prompts)."""
+        terms: list[str] = []
+        for dataset in datasets:
+            try:
+                collection = self.client.get_collection(self._collection_name(dataset))
+            except Exception:
+                continue
+            count = collection.count()
+            if count <= 0:
+                continue
+            offset = random.randint(0, max(0, count - 1))
+            res = collection.get(
+                limit=min(k, count), offset=offset, include=["metadatas"]
+            )
+            for meta in res.get("metadatas", []):
+                term = meta.get("term")
+                if term:
+                    terms.append(term)
+        random.shuffle(terms)
+        return terms[:k]
 
     @staticmethod
     def _load_csv(csv_path: Path) -> tuple[list[str], list[str], list[str]]:

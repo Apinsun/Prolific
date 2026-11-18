@@ -44,6 +44,7 @@ class TraceLogger:
         prompts: list[str],
         orientations: list[str | None],
         tool_calls: list[dict],
+        conversation: list[dict],
     ) -> None:
         self._append(
             "drafts.jsonl",
@@ -58,6 +59,7 @@ class TraceLogger:
                 "prompts": prompts,
                 "orientations": orientations,
                 "tool_calls": tool_calls,
+                "conversation": conversation,
             },
         )
 
@@ -93,3 +95,19 @@ class TraceLogger:
                 "error": error,
             },
         )
+
+    def delete_job(self, job_id: int) -> None:
+        """Supprime les traces d'un job (réécrit les fichiers sans ses lignes)."""
+        for filename in ("drafts.jsonl", "images.jsonl"):
+            path = self.directory / filename
+            if not path.exists():
+                continue
+            kept: list[str] = []
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    if json.loads(line).get("job_id") == job_id:
+                        continue
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                kept.append(line)
+            path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")

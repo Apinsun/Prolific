@@ -83,6 +83,7 @@ def build_mcp(
         temperature: float | None = None,
         batch: int = 1,
         min_words: int = 0,
+        random_tags: bool = False,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -100,6 +101,7 @@ def build_mcp(
             temperature: Créativité du LLM (0.0-2.0 ; None = défaut du modèle).
             batch: Nombre d'images par prompt (seeds différents).
             min_words: Longueur minimale d'un prompt (0 = pas de minimum).
+            random_tags: Injecter des termes aléatoires du RAG (si datasets sélectionnés).
         """
         if objective_type == "count":
             if not n:
@@ -124,6 +126,7 @@ def build_mcp(
             temperature=temperature,
             batch=batch,
             min_words=min_words,
+            random_tags=random_tags,
         )
 
     @mcp.tool()

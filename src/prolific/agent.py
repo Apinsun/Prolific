@@ -82,6 +82,30 @@ def _build_refine_message(short_prompts: list[str], min_units: int, style: str, 
     )
 
 
+def _to_conversation(messages: list) -> list[dict]:
+    """Convertit l'historique en liste {role, content, tool_calls?} (format fine-tuning)."""
+    conv: list[dict] = []
+    for m in messages:
+        if isinstance(m, SystemMessage):
+            role = "system"
+        elif isinstance(m, HumanMessage):
+            role = "user"
+        elif isinstance(m, AIMessage):
+            role = "assistant"
+        elif isinstance(m, ToolMessage):
+            role = "tool"
+        else:
+            role = "unknown"
+        entry: dict = {
+            "role": role,
+            "content": m.content if isinstance(m.content, str) else str(m.content),
+        }
+        if isinstance(m, AIMessage) and m.tool_calls:
+            entry["tool_calls"] = m.tool_calls
+        conv.append(entry)
+    return conv
+
+
 def draft_prompts_agent(
     llm: Any,
     tools: list,
@@ -92,15 +116,17 @@ def draft_prompts_agent(
     datasets: list[str] | None = None,
     history: list[str] | None = None,
     min_words: int = 0,
+    random_terms: list[str] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
-) -> tuple[list[str], list[str | None], list[dict]]:
+) -> tuple[list[str], list[str | None], list[dict], list[dict]]:
     """Rédige `n` prompts via une boucle LLM↔outils, puis raffine si trop courts.
 
-    Retourne (prompts, orientations, tool_calls). Si `min_words` > 0, les prompts sous
-    la limite sont enrichis (jusqu'à MAX_REFINE_ITERATIONS), avec suggestions RAG si un
-    outil search_terms est fourni (c.-à-d. si des datasets sont sélectionnés).
+    Retourne (prompts, orientations, tool_calls, conversation). La conversation contient
+    tout l'échange (system, user, assistant, tool) — utile pour le fine-tuning.
     """
-    system = build_draft_system(style=style, datasets=datasets, prompts_dir=prompts_dir)
+    system = build_draft_system(
+        style=style, datasets=datasets, random_terms=random_terms, prompts_dir=prompts_dir
+    )
     user = build_draft_user(n=n, theme=theme, history=history, prompts_dir=prompts_dir)
 
     llm_with_tools = llm.bind_tools(tools) if tools else llm
@@ -139,4 +165,4 @@ def draft_prompts_agent(
             if idx < len(prompts):
                 prompts[idx] = new_p
 
-    return prompts, orientations, tool_calls_log
+    return prompts, orientations, tool_calls_log, _to_conversation(messages)

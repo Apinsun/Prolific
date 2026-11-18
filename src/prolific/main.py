@@ -60,6 +60,7 @@ def create_app() -> FastAPI:
         rag=rag,
         manifest=manifest,
         orchestrator=orchestrator,
+        trace_logger=trace_logger,
     )
     mcp = build_mcp(orchestrator=orchestrator, db=db, rag=rag, manifest=manifest)
     mcp_app = mcp.http_app(path="/", transport="streamable-http")

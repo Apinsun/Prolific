@@ -4,6 +4,8 @@ $style_directive
 
 $datasets_hint
 
+$random_hint
+
 Règles générales :
 - Varie les sujets, les cadrages, les poses, l'éclairage et les ambiances.
 - Ne répète pas deux fois le même concept.
