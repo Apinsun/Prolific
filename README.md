@@ -22,6 +22,14 @@ Génération d'images en masse, orchestrée par un LLM (Ollama) + ComfyUI.
 ./scripts/stop.sh      # arrête le service
 ```
 
+## MCP
+
+Le service expose un endpoint MCP en **Streamable HTTP** sur
+`http://127.0.0.1:8000/mcp` (une fois `./scripts/start.sh` lancé).
+
+Outils exposés : `create_job`, `get_job`, `list_jobs`, `stop_job`, `list_workflows`,
+`list_datasets`, `search_terms`.
+
 ## Structure
 
 ```

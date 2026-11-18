@@ -1,0 +1,154 @@
+"""Serveur MCP : expose Prolific aux agents LLM externes (pi, Claude, ...).
+
+Transport : Streamable HTTP (monté sur le même process FastAPI, chemin `/mcp`).
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from fastmcp import FastMCP
+
+from prolific.db import Database
+from prolific.orchestrator import Orchestrator
+from prolific.rag import RagIndex
+
+MCP_NAME = "prolific"
+
+
+def _serialize_job(row: dict[str, Any]) -> dict[str, Any]:
+    """Décode les colonnes stockées en JSON texte (objective, datasets)."""
+    out = dict(row)
+    for field in ("objective", "datasets"):
+        if field in out and isinstance(out[field], str):
+            try:
+                out[field] = json.loads(out[field])
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return out
+
+
+def build_mcp(
+    *,
+    orchestrator: Orchestrator,
+    db: Database,
+    rag: RagIndex,
+    manifest: dict[str, Any],
+) -> FastMCP:
+    """Construit le serveur MCP avec les outils v1."""
+    mcp = FastMCP(
+        MCP_NAME,
+        instructions=(
+            "Prolific orchestre la génération d'images en masse via ComfyUI. "
+            "Utilisez create_job pour lancer une génération (N images ou T minutes), "
+            "get_job/list_jobs pour suivre, stop_job pour arrêter, list_workflows pour "
+            "lister les workflows, list_datasets/search_terms pour la recherche de termes."
+        ),
+    )
+
+    @mcp.tool()
+    def list_workflows() -> list[dict[str, Any]]:
+        """Liste les workflows ComfyUI disponibles (nom, description, style, formats)."""
+        return [
+            {
+                "name": name,
+                "description": entry.get("description", ""),
+                "style": entry.get("style", "tags"),
+                "formats": entry.get("formats", {}),
+            }
+            for name, entry in manifest.items()
+        ]
+
+    @mcp.tool()
+    def list_datasets() -> list[str]:
+        """Liste les datasets RAG indexés (interrogeables via search_terms)."""
+        return rag.list_datasets()
+
+    @mcp.tool()
+    def search_terms(
+        concept: str,
+        dataset: str | None = None,
+        top_k: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Recherche des termes (tags ou vocabulaire) correspondant à un concept.
+
+        Args:
+            concept: Concept ou description en langage naturel.
+            dataset: Nom d'un dataset précis (optionnel ; tous sinon).
+            top_k: Nombre maximum de résultats.
+        """
+        datasets = [dataset] if dataset else None
+        return rag.search(concept, datasets=datasets, top_k=top_k)
+
+    @mcp.tool()
+    def create_job(
+        theme: str,
+        workflow: str,
+        objective_type: str = "count",
+        n: int | None = None,
+        minutes: int | None = None,
+        orientation: str = "carre",
+        style: str | None = None,
+        datasets: list[str] | None = None,
+        swap_vram: bool = False,
+        seed: int | None = None,
+    ) -> int:
+        """Crée et lance un job de génération.
+
+        Args:
+            theme: Thème des images à générer.
+            workflow: Nom du workflow ComfyUI (voir list_workflows).
+            objective_type: 'count' (n images) ou 'duration' (minutes).
+            n: Nombre d'images (si objective_type='count').
+            minutes: Durée du job (si objective_type='duration').
+            orientation: carre | paysage | portrait.
+            style: tags | prose | hybrid (défaut : celui du workflow).
+            datasets: Datasets RAG actifs pour la rédaction.
+            swap_vram: Décharger/recharger les modèles autour des lots.
+            seed: Seed fixe (optionnel).
+        """
+        if objective_type == "count":
+            if not n:
+                raise ValueError("n est requis pour objective_type='count'")
+            objective: dict = {"type": "count", "n": int(n)}
+        elif objective_type == "duration":
+            if not minutes:
+                raise ValueError("minutes est requis pour objective_type='duration'")
+            objective = {"type": "duration", "minutes": int(minutes)}
+        else:
+            raise ValueError("objective_type doit être 'count' ou 'duration'")
+
+        return orchestrator.submit(
+            theme=theme,
+            workflow=workflow,
+            objective=objective,
+            style=style,
+            orientation=orientation,
+            datasets=datasets,
+            swap_vram=swap_vram,
+            seed=seed,
+        )
+
+    @mcp.tool()
+    def get_job(job_id: int) -> dict[str, Any]:
+        """Récupère l'état d'un job et la liste de ses images."""
+        job = db.get_job(job_id)
+        if job is None:
+            return {"error": f"job {job_id} introuvable"}
+        job = _serialize_job(job)
+        job["images"] = db.list_images(job_id)
+        return job
+
+    @mcp.tool()
+    def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
+        """Liste les jobs récents (du plus récent au plus ancien)."""
+        return [_serialize_job(job) for job in db.list_jobs(limit)]
+
+    @mcp.tool()
+    def stop_job(job_id: int) -> str:
+        """Demande l'arrêt propre d'un job (pris en compte entre deux images)."""
+        orchestrator.stop(job_id)
+        return f"Arrêt demandé pour le job {job_id}."
+
+    return mcp
