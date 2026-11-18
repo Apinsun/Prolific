@@ -297,10 +297,13 @@ class Orchestrator:
                         prompt_id, timeout=self.config.comfyui.timeout
                     )
                     images = self.comfyui.extract_images(history)
+                    # préférer les images réellement sauvegardées (SaveImage),
+                    # ignorer les aperçus (PreviewImage, type "temp")
+                    saved = [i for i in images if i.get("type") == "output"] or images
                     duration = time.monotonic() - t0
                     path = (
-                        f"{images[0].get('subfolder', '')}/{images[0].get('filename', '')}"
-                        if images
+                        f"{saved[0].get('subfolder', '')}/{saved[0].get('filename', '')}"
+                        if saved
                         else None
                     )
                     self.db.update_image(

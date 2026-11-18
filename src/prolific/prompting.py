@@ -158,8 +158,11 @@ def compose_positive(positive: str, suffix: str | None, style: str = "tags") -> 
     """Concatène un suffixe au prompt positif (séparateur selon le style)."""
     if not suffix:
         return positive
+    suffix = suffix.strip().strip(",").strip()
+    if not suffix:
+        return positive
     separator = " " if style == "prose" else ", "
-    return f"{positive}{separator}{suffix.strip()}"
+    return f"{positive}{separator}{suffix}"
 
 
 def normalize_draft(raw: str, style: str = "tags") -> list[str]:

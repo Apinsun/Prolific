@@ -28,6 +28,7 @@ workflows/*
 # ==== Secrets / env ====
 .env
 .env.*
+config.yaml
 
 # ==== OS ====
 .DS_Store
