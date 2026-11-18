@@ -60,6 +60,32 @@ de **retirer un job des traces** (dataset de fine-tuning) ou de **supprimer le j
 Voir [datasets/README.md](datasets/README.md). En résumé : déposez un CSV
 (`term, definition, category`) dans `datasets/`, puis lancez `./scripts/index_datasets.sh`.
 
+## Piloter Prolific via MCP (ex. avec pi)
+
+Prolific expose un serveur MCP sur `http://127.0.0.1:8000/mcp` (une fois
+`./scripts/start.sh` lancé).
+
+Avec **pi** :
+
+```bash
+pi mcp add prolific --url http://127.0.0.1:8000/mcp --exposure direct \
+  --description "Génération d'images en masse via LLM + ComfyUI"
+pi mcp list   # vérifier la connexion et lister les outils
+```
+
+Puis, dans une session pi, les outils sont disponibles directement :
+`mcp__prolific__list_workflows`, `mcp__prolific__list_datasets`,
+`mcp__prolific__list_categories`, `mcp__prolific__search_terms`,
+`mcp__prolific__random_term`, `mcp__prolific__create_job`, `mcp__prolific__get_job`,
+`mcp__prolific__list_jobs`, `mcp__prolific__stop_job`.
+
+Vous pouvez demander, par exemple : « liste les workflows, puis génère 5 images de
+femmes fatales steampunk avec le workflow test-dollamor ».
+
+> `--exposure direct` rend les outils directement visibles par le modèle. Sans cela,
+> ils restent accessibles via la recherche d'outils. Pour un serveur propre à un
+> projet, ajoutez `--local` (écrit `.pi/mcp.json`).
+
 ## Où sont les choses
 
 - **Images** : dans le dossier de sortie de ComfyUI (défini par votre workflow).
