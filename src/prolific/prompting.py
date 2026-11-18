@@ -154,6 +154,22 @@ def dedupe(prompts: list[str], history: list[str]) -> list[str]:
     return out
 
 
+def dedupe_tags(prompt: str) -> str:
+    """Dédoublonne des tags par token exact (entre virgules), en gardant l'ordre.
+
+    Ne confond pas les sous-chaînes : 'black', 'black hair' et 'black armor' restent
+    trois tags distincts.
+    """
+    seen: set[str] = set()
+    tags: list[str] = []
+    for part in prompt.split(","):
+        tag = part.strip()
+        if tag and tag not in seen:
+            seen.add(tag)
+            tags.append(tag)
+    return ", ".join(tags)
+
+
 def compose_positive(positive: str, suffix: str | None, style: str = "tags") -> str:
     """Concatène un suffixe au prompt positif (séparateur selon le style)."""
     if not suffix:
@@ -162,7 +178,10 @@ def compose_positive(positive: str, suffix: str | None, style: str = "tags") -> 
     if not suffix:
         return positive
     separator = " " if style == "prose" else ", "
-    return f"{positive}{separator}{suffix}"
+    result = f"{positive}{separator}{suffix}"
+    if style == "tags":
+        result = dedupe_tags(result)
+    return result
 
 
 def normalize_draft(raw: str, style: str = "tags") -> list[str]:
