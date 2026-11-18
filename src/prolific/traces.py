@@ -45,6 +45,8 @@ class TraceLogger:
         orientations: list[str | None],
         tool_calls: list[dict],
         conversation: list[dict],
+        model: str | None = None,
+        orientation: str | None = None,
     ) -> None:
         self._append(
             "drafts.jsonl",
@@ -56,6 +58,8 @@ class TraceLogger:
                 "datasets": datasets,
                 "n": n,
                 "temperature": temperature,
+                "model": model,
+                "orientation": orientation,
                 "prompts": prompts,
                 "orientations": orientations,
                 "tool_calls": tool_calls,

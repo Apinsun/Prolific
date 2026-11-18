@@ -83,6 +83,9 @@
         <label>Sous-dossier de sortie (relatif au dossier output de ComfyUI)
           <input id="filename_prefix" placeholder="ex : batch-prolificN1 (vide = dossier du workflow)">
         </label>
+        <label>Taille du lot de rédaction (vide = tout en un appel)
+          <input type="number" id="draft_batch_size" min="1" placeholder="ex : 20" title="Nombre max de prompts rédigés par appel LLM. Plus petit = plus fiable et varié, mais plus lent.">
+        </label>
 
         <label class="inline"><input type="checkbox" id="swap_vram"> Swap VRAM (LLM ↔ modèle d'image)</label>
         <div class="grid-2">

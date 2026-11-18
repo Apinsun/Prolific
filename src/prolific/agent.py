@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from prolific.prompting import (
     PROMPTS_DIR,
+    PromptingError,
     build_draft_system,
     build_draft_user,
     normalize_draft_full,
@@ -46,8 +47,9 @@ def _run_until_answer(
             logger.info("llm (%d) : %s", round_idx + 1, content)
 
         extra = getattr(resp, "additional_kwargs", None) or {}
-        if extra.get("thinking"):
-            logger.info("llm (%d) thinking : %s", round_idx + 1, extra["thinking"])
+        thinking = extra.get("reasoning_content") or extra.get("thinking")
+        if thinking:
+            logger.info("llm (%d) thinking : %s", round_idx + 1, thinking)
 
         if not resp.tool_calls:
             break
@@ -71,6 +73,52 @@ def _run_until_answer(
             logger.info("tool result : %s", content[:500])
             messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
     return resp
+
+
+def _looks_garbage(prompts: list[str]) -> bool:
+    """Détecte des artefacts de parse (fences, crochets, guillemets englobants)."""
+    for p in prompts:
+        p = p.strip()
+        if not p or len(p) < 8:
+            return True
+        if p.startswith(("```", "{", "[")):
+            return True
+        if len(p) >= 2 and p[0] == p[-1] and p[0] in "\"'":
+            return True
+    return False
+
+
+def _parse_draft(
+    llm_with_tools: Any,
+    tools: list,
+    messages: list,
+    tool_calls_log: list[dict],
+    raw: str,
+    style: str,
+    max_retries: int = 2,
+) -> tuple[list[str], list[str | None]]:
+    """Normalise la sortie LLM, avec re-demande au LLM si elle est invalide/artefactée."""
+    for _ in range(max_retries + 1):
+        try:
+            prompts, orientations = normalize_draft_full(raw, style)
+        except PromptingError:
+            prompts, orientations = [], []
+        if prompts and not _looks_garbage(prompts):
+            return prompts, orientations
+        messages.append(HumanMessage(content=(
+            "Ta réponse n'est pas du JSON valide ou contient des artefacts "
+            "(fences markdown, crochets, guillemets englobants). Réponds UNIQUEMENT "
+            "avec un objet JSON {\"prompts\": [\"...\", \"...\"]} complet et valide, "
+            "sans rien autour."
+        )))
+        resp = _run_until_answer(llm_with_tools, tools, messages, tool_calls_log)
+        if resp is None:
+            break
+        raw = resp.content if isinstance(resp.content, str) else str(resp.content)
+    try:
+        return normalize_draft_full(raw, style)
+    except PromptingError:
+        return [], []
 
 
 def _build_refine_message(short_prompts: list[str], min_units: int, style: str, tool: Any) -> str:
@@ -117,6 +165,9 @@ def _to_conversation(messages: list) -> list[dict]:
         }
         if isinstance(m, AIMessage) and m.tool_calls:
             entry["tool_calls"] = m.tool_calls
+        extra = getattr(m, "additional_kwargs", None) or {}
+        if extra.get("reasoning_content"):
+            entry["thinking"] = extra["reasoning_content"]
         conv.append(entry)
     return conv
 
@@ -153,7 +204,9 @@ def draft_prompts_agent(
         resp.content if resp is not None and isinstance(resp.content, str)
         else str(resp.content) if resp is not None else ""
     )
-    prompts, orientations = normalize_draft_full(raw, style)
+    prompts, orientations = _parse_draft(
+        llm_with_tools, tools, messages, tool_calls_log, raw, style
+    )
 
     # Raffinement des prompts trop courts
     for _ in range(MAX_REFINE_ITERATIONS):
@@ -172,9 +225,10 @@ def draft_prompts_agent(
         if resp is None:
             break
         raw = resp.content if isinstance(resp.content, str) else str(resp.content)
-        try:
-            refined, _ = normalize_draft_full(raw, style)
-        except Exception:
+        refined, _ = _parse_draft(
+            llm_with_tools, tools, messages, tool_calls_log, raw, style
+        )
+        if not refined:
             break
         for (idx, _), new_p in zip(short, refined):
             if idx < len(prompts):

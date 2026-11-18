@@ -55,6 +55,7 @@ function formToPayload() {
     positive_suffix: $('#positive_suffix').value.trim() || null,
     negative: $('#negative').value.trim() || null,
     filename_prefix: $('#filename_prefix').value.trim() || null,
+    draft_batch_size: $('#draft_batch_size').value ? parseInt($('#draft_batch_size').value, 10) : null,
     temperature: $('#temperature').value ? parseFloat($('#temperature').value) : null,
     batch: parseInt($('#batch').value, 10) || 1,
     min_words: parseInt($('#min_words').value, 10) || 0,

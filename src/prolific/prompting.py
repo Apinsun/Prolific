@@ -134,6 +134,22 @@ def _extract_json(text: str) -> Any:
                         break
         start = text.find("{", start + 1)
 
+    # premier tableau `[...]` équilibré
+    start = text.find("[")
+    while start != -1:
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "[":
+                depth += 1
+            elif text[i] == "]":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start : i + 1])
+                    except (json.JSONDecodeError, TypeError):
+                        break
+        start = text.find("[", start + 1)
+
     return None
 
 
@@ -229,8 +245,19 @@ def normalize_draft_full(
     if prompts:
         return prompts, kept_orientations
 
-    # repli : une ligne = un prompt (sans orientation)
-    prompts = [p for p in (clean_prompt(line, style) for line in raw.splitlines()) if p]
+    # repli : une ligne = un prompt (sans orientation), en filtrant les artefacts
+    prompts: list[str] = []
+    for line in raw.splitlines():
+        line = line.strip().strip(",").strip()
+        if not line or line in ("```", "```json", "{", "}", "[", "]"):
+            continue
+        if line.startswith(("```", "{", "[")):
+            continue
+        if len(line) >= 2 and line[0] == line[-1] and line[0] in "\"'":
+            line = line[1:-1]
+        p = clean_prompt(line, style)
+        if p:
+            prompts.append(p)
     if not prompts:
         raise PromptingError("Aucun prompt exploitable dans la sortie du LLM.")
     return prompts, [None] * len(prompts)

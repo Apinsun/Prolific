@@ -66,6 +66,7 @@ class OrchestratorState(TypedDict, total=False):
     min_words: int
     random_tags: bool
     filename_prefix: str | None
+    draft_batch_size: int | None
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -119,7 +120,10 @@ class Orchestrator:
         self.trace_logger = trace_logger
         self._llm_factory = llm_factory or (
             lambda model, temperature: ChatOllama(
-                model=model, base_url=self.config.llm.base_url, temperature=temperature
+                model=model,
+                base_url=self.config.llm.base_url,
+                temperature=temperature,
+                reasoning=True,  # capture le raisonnement dans additional_kwargs
             )
         )
 
@@ -162,9 +166,11 @@ class Orchestrator:
 
         if objective.get("type") == "count":
             n = int(objective["n"])
+            cap = state.get("draft_batch_size")
+            batch_size = min(n, cap) if cap else n
             return {
                 "target": n * images_per_prompt,
-                "batch_size": n,
+                "batch_size": batch_size,
                 "deadline": None,
                 "started_at": now,
                 "generated": 0,
@@ -216,7 +222,7 @@ class Orchestrator:
         random_terms: list[list[str]] = []
         if state.get("random_tags") and datasets:
             random_terms = [
-                self.rag.random_terms(datasets, k=5) for _ in range(batch_size)
+                self.rag.random_terms(datasets, k=15) for _ in range(batch_size)
             ]
         model = state.get("model") or self.config.llm.model
         temperature = state.get("temperature")  # None = défaut du modèle Ollama
@@ -274,6 +280,8 @@ class Orchestrator:
                 datasets=datasets,
                 n=batch_size,
                 temperature=temperature,
+                model=model,
+                orientation=state.get("orientation"),
                 prompts=prompts,
                 orientations=orientations,
                 tool_calls=tool_calls,
@@ -469,6 +477,9 @@ class Orchestrator:
             remaining = max(0, target - generated)
             if remaining > 0:
                 prompts_to_draft = math.ceil(remaining / images_per_prompt)
+                cap = state.get("draft_batch_size")
+                if cap:
+                    prompts_to_draft = min(prompts_to_draft, cap)
                 return {"batch_size": prompts_to_draft, "continue_loop": True}
             return {"continue_loop": False, "status": "done"}
 
@@ -518,6 +529,7 @@ class Orchestrator:
         min_words: int = 0,
         random_tags: bool = False,
         filename_prefix: str | None = None,
+        draft_batch_size: int | None = None,
     ) -> int:
         """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -568,6 +580,7 @@ class Orchestrator:
             "min_words": min_words,
             "random_tags": random_tags,
             "filename_prefix": filename_prefix,
+            "draft_batch_size": draft_batch_size,
         }
 
         self._stop_events[job_id] = threading.Event()

@@ -1,2 +1,2 @@
-Pour varier, voici des termes aléatoires suggérés — un ensemble par prompt, tu peux les intégrer ou non :
+Pour varier, voici des termes aléatoires suggérés — un ensemble par prompt. Intègre uniquement ceux qui sont cohérents avec le thème et entre eux ; ignore les autres :
 $terms

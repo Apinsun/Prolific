@@ -38,6 +38,7 @@ class JobCreate(BaseModel):
     random_tags: bool = False
     seed: int | None = None
     filename_prefix: str | None = None
+    draft_batch_size: int | None = None
 
 
 def build_api(
@@ -135,6 +136,7 @@ def build_api(
             min_words=payload.min_words,
             random_tags=payload.random_tags,
             filename_prefix=payload.filename_prefix,
+            draft_batch_size=payload.draft_batch_size,
         )
         return {"job_id": job_id}
 

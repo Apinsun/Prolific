@@ -112,6 +112,7 @@ def build_mcp(
         positive_suffix: str | None = None,
         negative: str | None = None,
         filename_prefix: str | None = None,
+        draft_batch_size: int | None = None,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -133,6 +134,7 @@ def build_mcp(
             positive_suffix: Texte concaténé au prompt positif.
             negative: Prompt négatif (remplace celui du workflow).
             filename_prefix: Sous-dossier de sortie (relatif au output_dir ComfyUI).
+            draft_batch_size: Taille max d'un lot de rédaction (None = tout en un appel).
         """
         if objective_type == "count":
             if not n:
@@ -161,6 +163,7 @@ def build_mcp(
             positive_suffix=positive_suffix,
             negative=negative,
             filename_prefix=filename_prefix,
+            draft_batch_size=draft_batch_size,
         )
 
     @mcp.tool()
