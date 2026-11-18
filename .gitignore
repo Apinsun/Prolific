@@ -31,3 +31,6 @@ workflows/*
 
 # ==== OS ====
 .DS_Store
+
+# ==== OS ====
+.directory
