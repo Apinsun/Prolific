@@ -133,18 +133,52 @@ async function loadJobDetail(id, { force = false } = {}) {
   attachLightbox();
 }
 
+let lightboxImages = [];
+let lightboxIndex = -1;
+
 function attachLightbox() {
-  const lb = $('#lightbox');
-  const lbImg = $('#lightbox-img');
-  document.querySelectorAll('#job-detail .thumbs img').forEach((img) => {
-    img.addEventListener('click', () => {
-      lbImg.src = img.src;
-      lb.hidden = false;
-    });
+  const thumbs = document.querySelectorAll('#job-detail .thumbs img');
+  lightboxImages = [...thumbs].map((img) => img.src);
+  thumbs.forEach((img, idx) => {
+    img.addEventListener('click', () => openLightbox(idx));
   });
 }
 
-$('#lightbox').addEventListener('click', () => { $('#lightbox').hidden = true; });
+function openLightbox(index) {
+  if (index < 0 || index >= lightboxImages.length) return;
+  lightboxIndex = index;
+  $('#lightbox').hidden = false;
+  updateLightbox();
+}
+
+function updateLightbox() {
+  $('#lightbox-img').src = lightboxImages[lightboxIndex];
+  $('#lightbox-prev').disabled = lightboxIndex <= 0;
+  $('#lightbox-next').disabled = lightboxIndex >= lightboxImages.length - 1;
+  $('#lightbox-counter').textContent = `${lightboxIndex + 1} / ${lightboxImages.length}`;
+}
+
+function lightboxPrev() {
+  if (lightboxIndex > 0) { lightboxIndex--; updateLightbox(); }
+}
+function lightboxNext() {
+  if (lightboxIndex < lightboxImages.length - 1) { lightboxIndex++; updateLightbox(); }
+}
+function closeLightbox() { $('#lightbox').hidden = true; }
+
+$('#lightbox').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeLightbox(); // fermer seulement sur le fond
+});
+$('#lightbox-prev').addEventListener('click', lightboxPrev);
+$('#lightbox-next').addEventListener('click', lightboxNext);
+$('#lightbox-close').addEventListener('click', closeLightbox);
+
+document.addEventListener('keydown', (e) => {
+  if ($('#lightbox').hidden) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); lightboxPrev(); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); lightboxNext(); }
+  else if (e.key === 'Escape') { closeLightbox(); }
+});
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
