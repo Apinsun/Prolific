@@ -80,6 +80,9 @@
         <label>Prompt négatif (remplace celui du workflow)
           <textarea id="negative" rows="2" placeholder="ex : lowres, bad anatomy"></textarea>
         </label>
+        <label>Sous-dossier de sortie (relatif au dossier output de ComfyUI)
+          <input id="filename_prefix" placeholder="ex : batch-prolificN1 (vide = dossier du workflow)">
+        </label>
 
         <label class="inline"><input type="checkbox" id="swap_vram"> Swap VRAM (LLM ↔ modèle d'image)</label>
         <div class="grid-2">

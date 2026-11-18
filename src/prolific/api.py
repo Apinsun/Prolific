@@ -37,6 +37,7 @@ class JobCreate(BaseModel):
     min_words: int = 0
     random_tags: bool = False
     seed: int | None = None
+    filename_prefix: str | None = None
 
 
 def build_api(
@@ -133,6 +134,7 @@ def build_api(
             batch=payload.batch,
             min_words=payload.min_words,
             random_tags=payload.random_tags,
+            filename_prefix=payload.filename_prefix,
         )
         return {"job_id": job_id}
 

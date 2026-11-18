@@ -111,6 +111,7 @@ def build_mcp(
         random_tags: bool = False,
         positive_suffix: str | None = None,
         negative: str | None = None,
+        filename_prefix: str | None = None,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -131,6 +132,7 @@ def build_mcp(
             random_tags: Injecter des termes aléatoires du RAG (si datasets sélectionnés).
             positive_suffix: Texte concaténé au prompt positif.
             negative: Prompt négatif (remplace celui du workflow).
+            filename_prefix: Sous-dossier de sortie (relatif au output_dir ComfyUI).
         """
         if objective_type == "count":
             if not n:
@@ -158,6 +160,7 @@ def build_mcp(
             random_tags=random_tags,
             positive_suffix=positive_suffix,
             negative=negative,
+            filename_prefix=filename_prefix,
         )
 
     @mcp.tool()

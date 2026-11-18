@@ -59,11 +59,13 @@ def patch_workflow(
     seed: int | None = None,
     width: int | None = None,
     height: int | None = None,
+    filename_prefix: str | None = None,
 ) -> dict[str, Any]:
     """Charge un workflow et y injecte prompt/dimensions/seeds via les slots déclarés.
 
     Ne touche qu'aux slots déclarés dans le manifest : checkpoint, LoRA, négatif par
-    défaut, etc. restent figés dans le fichier du workflow.
+    défaut, etc. restent figés dans le fichier du workflow. Si `filename_prefix` est
+    fourni, tous les nœuds SaveImage écrivent dans ce sous-dossier du output_dir.
     """
     if name not in manifest:
         raise WorkflowError(f"Workflow inconnu : {name!r}")
@@ -99,5 +101,14 @@ def patch_workflow(
         if node in wf and "inputs" in wf[node]:
             value = seed if seed is not None else random.randint(0, 2**63 - 1)
             wf[node]["inputs"]["seed"] = value
+
+    # Redirection dynamique des sorties : tout nœud SaveImage écrit dans un
+    # sous-dossier (relatif au output_dir de ComfyUI) donné par filename_prefix.
+    if filename_prefix:
+        directory = filename_prefix.strip().rstrip("/")
+        base = directory.rsplit("/", 1)[-1] or "image"
+        for node in wf.values():
+            if node.get("class_type") == "SaveImage" and "inputs" in node:
+                node["inputs"]["filename_prefix"] = f"{directory}/{base}"
 
     return wf

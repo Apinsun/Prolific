@@ -65,6 +65,7 @@ class OrchestratorState(TypedDict, total=False):
     batch: int
     min_words: int
     random_tags: bool
+    filename_prefix: str | None
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -363,6 +364,7 @@ class Orchestrator:
                         seed=img_seed,
                         width=width,
                         height=height,
+                        filename_prefix=state.get("filename_prefix"),
                     )
                     image_id = self.db.add_image(
                         job_id,
@@ -396,11 +398,12 @@ class Orchestrator:
                         # ignorer les aperçus (PreviewImage, type "temp")
                         saved = [i for i in images if i.get("type") == "output"] or images
                         duration = time.monotonic() - t0
-                        path = (
-                            f"{saved[0].get('subfolder', '')}/{saved[0].get('filename', '')}"
-                            if saved
-                            else None
-                        )
+                        if saved:
+                            sub = saved[0].get("subfolder", "")
+                            fn = saved[0].get("filename", "")
+                            path = f"{sub}/{fn}" if sub else fn
+                        else:
+                            path = None
                         self.db.update_image(
                             image_id, status="done", path=path, duration_seconds=duration
                         )
@@ -514,6 +517,7 @@ class Orchestrator:
         batch: int = 1,
         min_words: int = 0,
         random_tags: bool = False,
+        filename_prefix: str | None = None,
     ) -> int:
         """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -563,6 +567,7 @@ class Orchestrator:
             "batch": batch,
             "min_words": min_words,
             "random_tags": random_tags,
+            "filename_prefix": filename_prefix,
         }
 
         self._stop_events[job_id] = threading.Event()

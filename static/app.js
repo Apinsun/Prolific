@@ -54,6 +54,7 @@ function formToPayload() {
     swap_vram: $('#swap_vram').checked,
     positive_suffix: $('#positive_suffix').value.trim() || null,
     negative: $('#negative').value.trim() || null,
+    filename_prefix: $('#filename_prefix').value.trim() || null,
     temperature: $('#temperature').value ? parseFloat($('#temperature').value) : null,
     batch: parseInt($('#batch').value, 10) || 1,
     min_words: parseInt($('#min_words').value, 10) || 0,
