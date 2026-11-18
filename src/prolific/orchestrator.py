@@ -59,6 +59,7 @@ class OrchestratorState(TypedDict, total=False):
     negative: str | None
     temperature: float | None
     batch: int
+    min_words: int
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -217,6 +218,7 @@ class Orchestrator:
                 style=state.get("style", "tags"),
                 datasets=datasets,
                 history=history,
+                min_words=state.get("min_words", 0),
                 prompts_dir=self.prompts_dir,
             )
         except Exception as exc:  # noqa: BLE001 — on capture tout pour tracer le job
@@ -491,6 +493,7 @@ class Orchestrator:
         negative: str | None = None,
         temperature: float | None = None,
         batch: int = 1,
+        min_words: int = 0,
     ) -> int:
         """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -513,6 +516,7 @@ class Orchestrator:
             negative=negative,
             temperature=temperature,
             batch=batch,
+            min_words=min_words,
             images_target=images_target,
         )
         self.db.update_job(job_id, status="running", started_at=_now())
@@ -536,6 +540,7 @@ class Orchestrator:
             "negative": negative,
             "temperature": temperature,
             "batch": batch,
+            "min_words": min_words,
         }
 
         self._stop_events[job_id] = threading.Event()

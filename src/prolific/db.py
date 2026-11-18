@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     negative          TEXT,
     temperature       REAL,
     batch             INTEGER NOT NULL DEFAULT 1,
+    min_words         INTEGER NOT NULL DEFAULT 0,
     images_target     INTEGER,
     images_done   INTEGER NOT NULL DEFAULT 0,
     error         TEXT,
@@ -82,6 +83,7 @@ _COLUMN_MIGRATIONS = [
     ("jobs", "negative", "TEXT"),
     ("jobs", "temperature", "REAL"),
     ("jobs", "batch", "INTEGER NOT NULL DEFAULT 1"),
+    ("jobs", "min_words", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 
@@ -156,15 +158,16 @@ class Database:
         negative: str | None = None,
         temperature: float | None = None,
         batch: int = 1,
+        min_words: int = 0,
         images_target: int | None = None,
     ) -> int:
         now = _now()
         return self._write(
             """INSERT INTO jobs
                (objective, theme, workflow, style, orientation, datasets,
-                swap_vram, seed, positive_suffix, negative, temperature, batch, images_target,
-                created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                swap_vram, seed, positive_suffix, negative, temperature, batch, min_words,
+                images_target, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
                 theme,
@@ -178,6 +181,7 @@ class Database:
                 negative,
                 temperature,
                 batch,
+                min_words,
                 images_target,
                 now,
                 now,

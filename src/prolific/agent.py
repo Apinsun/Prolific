@@ -1,7 +1,8 @@
-"""Agent de rédaction de prompts : boucle LLM ↔ outils (search_terms)."""
+"""Agent de rédaction de prompts : boucle LLM ↔ outils + raffinement si trop court."""
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -16,34 +17,25 @@ from prolific.prompting import (
 )
 
 MAX_TOOL_ITERATIONS = 6
+MAX_REFINE_ITERATIONS = 3
 
 logger = logging.getLogger(__name__)
 
 
-def draft_prompts_agent(
-    llm: Any,
+def _count_units(prompt: str, style: str) -> int:
+    """Nombre d'unités : tags (séparés par virgules) ou mots (prose)."""
+    if style == "tags":
+        return len([t for t in prompt.split(",") if t.strip()])
+    return len(prompt.split())
+
+
+def _run_until_answer(
+    llm_with_tools: Any,
     tools: list,
-    *,
-    n: int,
-    theme: str,
-    style: str = "tags",
-    datasets: list[str] | None = None,
-    history: list[str] | None = None,
-    prompts_dir: Path = PROMPTS_DIR,
-) -> tuple[list[str], list[str | None], list[dict]]:
-    """Rédige `n` prompts via une boucle LLM↔outils, puis normalise.
-
-    Retourne (prompts, orientations, tool_calls). Le LLM peut appeler les outils
-    fournis (ex. search_terms) autant de fois que nécessaire, puis produire le JSON
-    final {"prompts": [...], "orientations": [...]}.
-    """
-    system = build_draft_system(style=style, datasets=datasets, prompts_dir=prompts_dir)
-    user = build_draft_user(n=n, theme=theme, history=history, prompts_dir=prompts_dir)
-
-    llm_with_tools = llm.bind_tools(tools) if tools else llm
-    messages: list = [SystemMessage(content=system), HumanMessage(content=user)]
-
-    tool_calls: list[dict] = []
+    messages: list,
+    tool_calls_log: list[dict],
+) -> AIMessage | None:
+    """Boucle LLM↔outils jusqu'à une réponse finale (ou épuisement des itérations)."""
     resp: AIMessage | None = None
     for _ in range(MAX_TOOL_ITERATIONS):
         resp = llm_with_tools.invoke(messages)
@@ -58,16 +50,93 @@ def draft_prompts_agent(
                 if tool
                 else f"Outil inconnu : {call['name']}"
             )
-            tool_calls.append(
+            tool_calls_log.append(
                 {"name": call["name"], "args": call.get("args"), "result": content}
             )
             logger.info("tool result (%s) : %s", call["name"], content[:200])
             messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
+    return resp
 
-    if resp is None:
-        prompts, orientations = normalize_draft_full("", style)
-        return prompts, orientations, tool_calls
 
-    raw = resp.content if isinstance(resp.content, str) else str(resp.content)
+def _build_refine_message(short_prompts: list[str], min_units: int, style: str, tool: Any) -> str:
+    """Construit la consigne d'enrichissement (avec suggestions RAG si outil dispo)."""
+    unit_label = "tags" if style == "tags" else "mots"
+    lines = "\n".join(f"- {p}" for p in short_prompts)
+    suggestions = ""
+    if tool is not None:
+        for p in short_prompts:
+            try:
+                result = tool.invoke({"concept": p, "top_k": 8})
+                data = json.loads(result)
+                terms = [t.get("term") for t in data if isinstance(t, dict) and t.get("term")][:8]
+                if terms:
+                    suggestions += f"\nTermes suggérés pour « {p} » : {', '.join(terms)}"
+            except Exception:
+                pass
+    return (
+        f"Les prompts suivants sont trop courts (moins de {min_units} {unit_label}). "
+        f"Enrichis-les en ajoutant plus de détails (apparence, pose, environnement, "
+        f"éclairage, style).\n\n{lines}\n{suggestions}\n\n"
+        f"Réponds UNIQUEMENT au format JSON : {{\"prompts\": [\"...\", \"...\"]}} "
+        f"avec uniquement les versions enrichies, dans le même ordre."
+    )
+
+
+def draft_prompts_agent(
+    llm: Any,
+    tools: list,
+    *,
+    n: int,
+    theme: str,
+    style: str = "tags",
+    datasets: list[str] | None = None,
+    history: list[str] | None = None,
+    min_words: int = 0,
+    prompts_dir: Path = PROMPTS_DIR,
+) -> tuple[list[str], list[str | None], list[dict]]:
+    """Rédige `n` prompts via une boucle LLM↔outils, puis raffine si trop courts.
+
+    Retourne (prompts, orientations, tool_calls). Si `min_words` > 0, les prompts sous
+    la limite sont enrichis (jusqu'à MAX_REFINE_ITERATIONS), avec suggestions RAG si un
+    outil search_terms est fourni (c.-à-d. si des datasets sont sélectionnés).
+    """
+    system = build_draft_system(style=style, datasets=datasets, prompts_dir=prompts_dir)
+    user = build_draft_user(n=n, theme=theme, history=history, prompts_dir=prompts_dir)
+
+    llm_with_tools = llm.bind_tools(tools) if tools else llm
+    messages: list = [SystemMessage(content=system), HumanMessage(content=user)]
+    tool_calls_log: list[dict] = []
+
+    resp = _run_until_answer(llm_with_tools, tools, messages, tool_calls_log)
+    raw = (
+        resp.content if resp is not None and isinstance(resp.content, str)
+        else str(resp.content) if resp is not None else ""
+    )
     prompts, orientations = normalize_draft_full(raw, style)
-    return prompts, orientations, tool_calls
+
+    # Raffinement des prompts trop courts
+    for _ in range(MAX_REFINE_ITERATIONS):
+        if min_words <= 0:
+            break
+        short = [
+            (i, p) for i, p in enumerate(prompts) if _count_units(p, style) < min_words
+        ]
+        if not short:
+            break
+        refine = _build_refine_message(
+            [p for _, p in short], min_words, style, tools[0] if tools else None
+        )
+        messages.append(HumanMessage(content=refine))
+        resp = _run_until_answer(llm_with_tools, tools, messages, tool_calls_log)
+        if resp is None:
+            break
+        raw = resp.content if isinstance(resp.content, str) else str(resp.content)
+        try:
+            refined, _ = normalize_draft_full(raw, style)
+        except Exception:
+            break
+        for (idx, _), new_p in zip(short, refined):
+            if idx < len(prompts):
+                prompts[idx] = new_p
+
+    return prompts, orientations, tool_calls_log

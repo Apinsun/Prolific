@@ -45,6 +45,10 @@
           <input type="number" id="batch" min="1" value="1" title="Chaque prompt est généré ce nombre de fois, avec des seeds différents">
         </label>
 
+        <label>Longueur min des prompts (tags/mots)
+          <input type="number" id="min_words" min="0" value="0" title="0 = pas de minimum ; sinon le LLM enrichit les prompts trop courts">
+        </label>
+
         <div class="grid-2">
           <label>Dimensions
             <select id="orientation">

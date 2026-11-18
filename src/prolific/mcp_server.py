@@ -82,6 +82,7 @@ def build_mcp(
         seed: int | None = None,
         temperature: float | None = None,
         batch: int = 1,
+        min_words: int = 0,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -98,6 +99,7 @@ def build_mcp(
             seed: Seed fixe (optionnel).
             temperature: Créativité du LLM (0.0-2.0 ; None = défaut du modèle).
             batch: Nombre d'images par prompt (seeds différents).
+            min_words: Longueur minimale d'un prompt (0 = pas de minimum).
         """
         if objective_type == "count":
             if not n:
@@ -121,6 +123,7 @@ def build_mcp(
             seed=seed,
             temperature=temperature,
             batch=batch,
+            min_words=min_words,
         )
 
     @mcp.tool()

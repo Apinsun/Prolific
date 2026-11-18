@@ -51,6 +51,7 @@ function formToPayload() {
     negative: $('#negative').value.trim() || null,
     temperature: $('#temperature').value ? parseFloat($('#temperature').value) : null,
     batch: parseInt($('#batch').value, 10) || 1,
+    min_words: parseInt($('#min_words').value, 10) || 0,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
   };
 }

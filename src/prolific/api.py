@@ -32,6 +32,7 @@ class JobCreate(BaseModel):
     negative: str | None = None
     temperature: float | None = None
     batch: int = 1
+    min_words: int = 0
     seed: int | None = None
 
 
@@ -126,6 +127,7 @@ def build_api(
             negative=payload.negative,
             temperature=payload.temperature,
             batch=payload.batch,
+            min_words=payload.min_words,
         )
         return {"job_id": job_id}
 
