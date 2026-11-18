@@ -30,6 +30,9 @@ workflows/*
 .env.*
 config.yaml
 
+# ==== Datasets (CSVs source du RAG — données utilisateur) ====
+datasets/*.csv
+
 # ==== OS ====
 .DS_Store
 

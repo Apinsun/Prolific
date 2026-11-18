@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from prolific.prompting import (
 )
 
 MAX_TOOL_ITERATIONS = 6
+
+logger = logging.getLogger(__name__)
 
 
 def draft_prompts_agent(
@@ -47,11 +50,13 @@ def draft_prompts_agent(
             break
         for call in resp.tool_calls:
             tool = next((t for t in tools if t.name == call["name"]), None)
+            logger.info("tool call : %s(%s)", call["name"], call.get("args"))
             content = (
                 str(tool.invoke(call["args"]))
                 if tool
                 else f"Outil inconnu : {call['name']}"
             )
+            logger.info("tool result (%s) : %s", call["name"], content[:200])
             messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
 
     if resp is None:
