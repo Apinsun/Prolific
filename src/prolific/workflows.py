@@ -24,6 +24,19 @@ def list_workflow_names(manifest: dict[str, Any]) -> list[str]:
     return sorted(manifest.keys())
 
 
+def resolve_format(manifest: dict[str, Any], name: str, orientation: str) -> tuple[int, int]:
+    """Résout une orientation (carre/paysage/portrait) en (largeur, hauteur)."""
+    if name not in manifest:
+        raise WorkflowError(f"Workflow inconnu : {name!r}")
+    formats = manifest[name].get("formats", {})
+    if orientation not in formats:
+        raise WorkflowError(
+            f"Format invalide {orientation!r} pour {name!r}. Valides : {list(formats)}"
+        )
+    width_s, height_s = formats[orientation].split("x")
+    return int(width_s), int(height_s)
+
+
 def patch_workflow(
     manifest: dict[str, Any],
     workflows_dir: Path,
@@ -58,19 +71,13 @@ def patch_workflow(
         if node in wf and "inputs" in wf[node]:
             wf[node]["inputs"][s["field"]] = value
 
-    # Dimensions : orientation → largeur/hauteur (figées par workflow)
-    formats = entry.get("formats", {})
-    if orientation not in formats:
-        raise WorkflowError(
-            f"Format invalide {orientation!r} pour {name!r}. Valides : {list(formats)}"
-        )
-    width_s, height_s = formats[orientation].split("x")
+    width, height = resolve_format(manifest, name, orientation)
 
     set_slot("positive", positive)
     if negative:
         set_slot("negative", negative)
-    set_slot("width", int(width_s))
-    set_slot("height", int(height_s))
+    set_slot("width", width)
+    set_slot("height", height)
 
     # Seeds : chaque KSampler listé est resédé (même seed si fourni, sinon aléatoire)
     for seed_node in slots.get("seeds", []):
