@@ -37,23 +37,38 @@ def _run_until_answer(
 ) -> AIMessage | None:
     """Boucle LLM↔outils jusqu'à une réponse finale (ou épuisement des itérations)."""
     resp: AIMessage | None = None
-    for _ in range(MAX_TOOL_ITERATIONS):
+    for round_idx in range(MAX_TOOL_ITERATIONS):
         resp = llm_with_tools.invoke(messages)
         messages.append(resp)
+
+        content = resp.content if isinstance(resp.content, str) else str(resp.content)
+        if content:
+            logger.info("llm (%d) : %s", round_idx + 1, content)
+
+        extra = getattr(resp, "additional_kwargs", None) or {}
+        if extra.get("thinking"):
+            logger.info("llm (%d) thinking : %s", round_idx + 1, extra["thinking"])
+
         if not resp.tool_calls:
             break
+
+        logger.info("llm (%d) — %d tool call(s)", round_idx + 1, len(resp.tool_calls))
         for call in resp.tool_calls:
             tool = next((t for t in tools if t.name == call["name"]), None)
-            logger.info("tool call : %s(%s)", call["name"], call.get("args"))
-            content = (
-                str(tool.invoke(call["args"]))
-                if tool
-                else f"Outil inconnu : {call['name']}"
-            )
+            if tool is None:
+                content = f"Outil inconnu : {call['name']}"
+                logger.warning("tool call inconnu : %s", call["name"])
+            else:
+                try:
+                    content = str(tool.invoke(call["args"]))
+                except Exception as exc:  # noqa: BLE001
+                    content = f"Erreur de l'outil : {exc}"
+                    logger.error("tool call %s a échoué : %s", call["name"], exc)
             tool_calls_log.append(
                 {"name": call["name"], "args": call.get("args"), "result": content}
             )
-            logger.info("tool result (%s) : %s", call["name"], content[:200])
+            logger.info("tool call : %s(%s)", call["name"], call.get("args"))
+            logger.info("tool result : %s", content[:500])
             messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
     return resp
 
