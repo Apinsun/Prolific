@@ -43,6 +43,7 @@ class TraceLogger:
         temperature: float | None,
         prompts: list[str],
         orientations: list[str | None],
+        tool_calls: list[dict],
     ) -> None:
         self._append(
             "drafts.jsonl",
@@ -56,6 +57,7 @@ class TraceLogger:
                 "temperature": temperature,
                 "prompts": prompts,
                 "orientations": orientations,
+                "tool_calls": tool_calls,
             },
         )
 

@@ -209,7 +209,7 @@ class Orchestrator:
         )
 
         try:
-            prompts, orientations = draft_prompts_agent(
+            prompts, orientations, tool_calls = draft_prompts_agent(
                 llm,
                 tools,
                 n=batch_size,
@@ -255,6 +255,7 @@ class Orchestrator:
                 temperature=temperature,
                 prompts=prompts,
                 orientations=orientations,
+                tool_calls=tool_calls,
             )
         if not prompts and batch_size > 0:
             return {

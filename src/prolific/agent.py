@@ -30,12 +30,12 @@ def draft_prompts_agent(
     datasets: list[str] | None = None,
     history: list[str] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
-) -> tuple[list[str], list[str | None]]:
+) -> tuple[list[str], list[str | None], list[dict]]:
     """Rédige `n` prompts via une boucle LLM↔outils, puis normalise.
 
-    Retourne (prompts, orientations). Le LLM peut appeler les outils fournis
-    (ex. search_terms) autant de fois que nécessaire, puis produire le JSON final
-    {"prompts": [...], "orientations": [...]}.
+    Retourne (prompts, orientations, tool_calls). Le LLM peut appeler les outils
+    fournis (ex. search_terms) autant de fois que nécessaire, puis produire le JSON
+    final {"prompts": [...], "orientations": [...]}.
     """
     system = build_draft_system(style=style, datasets=datasets, prompts_dir=prompts_dir)
     user = build_draft_user(n=n, theme=theme, history=history, prompts_dir=prompts_dir)
@@ -43,6 +43,7 @@ def draft_prompts_agent(
     llm_with_tools = llm.bind_tools(tools) if tools else llm
     messages: list = [SystemMessage(content=system), HumanMessage(content=user)]
 
+    tool_calls: list[dict] = []
     resp: AIMessage | None = None
     for _ in range(MAX_TOOL_ITERATIONS):
         resp = llm_with_tools.invoke(messages)
@@ -57,11 +58,16 @@ def draft_prompts_agent(
                 if tool
                 else f"Outil inconnu : {call['name']}"
             )
+            tool_calls.append(
+                {"name": call["name"], "args": call.get("args"), "result": content}
+            )
             logger.info("tool result (%s) : %s", call["name"], content[:200])
             messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
 
     if resp is None:
-        return normalize_draft_full("", style)
+        prompts, orientations = normalize_draft_full("", style)
+        return prompts, orientations, tool_calls
 
     raw = resp.content if isinstance(resp.content, str) else str(resp.content)
-    return normalize_draft_full(raw, style)
+    prompts, orientations = normalize_draft_full(raw, style)
+    return prompts, orientations, tool_calls
