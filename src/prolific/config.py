@@ -39,6 +39,11 @@ class RagConfig(BaseModel):
     chroma_dir: str = "./chroma_db"
 
 
+class LoggingConfig(BaseModel):
+    level: str = "INFO"
+    file: str = ""
+
+
 class Config(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     comfyui: ComfyUIConfig = Field(default_factory=ComfyUIConfig)
@@ -46,6 +51,7 @@ class Config(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     datasets: DatasetsConfig = Field(default_factory=DatasetsConfig)
     rag: RagConfig = Field(default_factory=RagConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:

@@ -32,5 +32,8 @@ workflows/*
 # ==== OS ====
 .DS_Store
 
+# ==== Logs ====
+*.log
+
 # ==== OS ====
 .directory

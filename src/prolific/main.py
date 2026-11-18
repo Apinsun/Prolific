@@ -14,6 +14,7 @@ from prolific.clients.comfyui import ComfyUIClient
 from prolific.clients.ollama import OllamaClient
 from prolific.config import load_config
 from prolific.db import Database
+from prolific.logging_setup import setup_logging
 from prolific.mcp_server import build_mcp
 from prolific.orchestrator import Orchestrator
 from prolific.rag import RagIndex
@@ -26,6 +27,7 @@ STATIC_DIR = Path("static")
 def create_app() -> FastAPI:
     """Construit l'application : dépendances + FastAPI + UI + MCP monté sur /mcp."""
     config = load_config()
+    setup_logging(config)
     db = Database()
     ollama = OllamaClient(config.llm.base_url)
     comfyui = ComfyUIClient(config.comfyui.url)

@@ -22,3 +22,7 @@ datasets:
 rag:
   embed_model: bge-m3         # modèle d'embedding Ollama (bge-m3 | nomic-embed-text)
   chroma_dir: ./chroma_db     # index vectoriel ChromaDB (gitignoré)
+
+logging:
+  level: INFO                 # DEBUG | INFO | WARNING | ERROR
+  file: ""                    # vide = console uniquement ; ex : prolific.log

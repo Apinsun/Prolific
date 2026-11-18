@@ -15,6 +15,7 @@ Le graphe est synchrone et tourne dans un thread en arrière-plan.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 import time
@@ -35,6 +36,8 @@ from prolific.prompting import PROMPTS_DIR, compose_positive, dedupe
 from prolific.rag import RagIndex
 from prolific.tools import make_search_terms_tool
 from prolific.workflows import patch_workflow, resolve_format
+
+logger = logging.getLogger(__name__)
 
 
 class OrchestratorState(TypedDict, total=False):
@@ -185,6 +188,10 @@ class Orchestrator:
         tools = [make_search_terms_tool(self.rag, datasets)] if datasets else []
         model = state.get("model") or self.config.llm.model
         llm = self._llm_factory(model)
+        logger.info(
+            "job %s — rédaction de %d prompts (style=%s datasets=%s)",
+            state["job_id"], batch_size, state.get("style"), datasets,
+        )
 
         try:
             prompts = draft_prompts_agent(
@@ -198,6 +205,7 @@ class Orchestrator:
                 prompts_dir=self.prompts_dir,
             )
         except Exception as exc:  # noqa: BLE001 — on capture tout pour tracer le job
+            logger.error("job %s — échec de la rédaction : %s", state["job_id"], exc)
             return {
                 "error": f"Échec de la rédaction : {exc}",
                 "status": "failed",
@@ -205,6 +213,9 @@ class Orchestrator:
             }
 
         prompts = dedupe(prompts, history)
+        logger.info(
+            "job %s — %d prompts retenus après dédoublonnage", state["job_id"], len(prompts)
+        )
         if not prompts and batch_size > 0:
             return {"prompts": [], "stalled": state.get("stalled", 0) + 1}
         return {"prompts": prompts, "stalled": 0}
@@ -224,6 +235,7 @@ class Orchestrator:
         # 1 cycle VRAM pour tout le lot : on décharge le LLM avant de générer
         if swap and model:
             self.ollama.unload(model)
+        logger.info("job %s — génération de %d images (swap=%s)", job_id, len(prompts), swap)
 
         durations: list[float] = []
         try:
@@ -297,8 +309,10 @@ class Orchestrator:
                     durations.append(duration)
                     generated += 1
                     self.db.update_job(job_id, images_done=generated)
+                    logger.info("job %s — image %s ok (%.1fs)", job_id, image_id, duration)
                 except Exception as exc:  # noqa: BLE001
                     self.db.update_image(image_id, status="failed", error=str(exc))
+                    logger.warning("job %s — image %s échouée : %s", job_id, image_id, exc)
         finally:
             if swap:
                 self.comfyui.free_vram()
@@ -352,6 +366,7 @@ class Orchestrator:
             finished_at=_now(),
             error=state.get("error"),
         )
+        logger.info("job %s — terminé : %s", state["job_id"], status)
         return {"status": status}
 
     # ── exécution ─────────────────────────────────────────────────────
@@ -390,6 +405,10 @@ class Orchestrator:
             images_target=images_target,
         )
         self.db.update_job(job_id, status="running", started_at=_now())
+        logger.info(
+            "job %s soumis — workflow=%r thème=%r objectif=%r swap_vram=%s datasets=%s",
+            job_id, workflow, theme, objective, swap_vram, datasets or [],
+        )
 
         initial: OrchestratorState = {
             "job_id": job_id,
@@ -416,10 +435,12 @@ class Orchestrator:
         try:
             self._graph.invoke(initial, config=run_config)
         except Exception as exc:  # noqa: BLE001
+            logger.exception("job %s — erreur non capturée", job_id)
             self.db.update_job(job_id, status="failed", error=str(exc), finished_at=_now())
 
     def stop(self, job_id: int) -> None:
         """Demande un arrêt propre (pris en compte entre deux images)."""
         event = self._stop_events.get(job_id)
         if event is not None:
+            logger.info("job %s — demande d'arrêt", job_id)
             event.set()
