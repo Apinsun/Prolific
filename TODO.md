@@ -27,6 +27,7 @@ avec reprise), et de la machine à états des statuts
 ## Autres pistes
 
 - Filtre de similarité (Jaccard) contre les « presque doublons » de tags.
-- Amélioration de la qualité du RAG (seuil de similarité, filtres par catégorie).
+- Réglage du seuil de similarité du RAG (actuellement 0.3).
 - Wrapper MCP en stdio (en plus du HTTP), pour les outils qui l'exigent.
-- Récupération/copie des images vers un dossier propre à Prolific.
+- Navigation du lightbox à la molette / tactile (en plus des flèches et boutons).
+- Re-rendu incrémental des vignettes pendant la génération (éviter le re-rendu complet).

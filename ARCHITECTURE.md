@@ -57,13 +57,13 @@ flowchart TB
 | `clients/comfyui.py` | soumission, suivi, extraction, libération VRAM |
 | `rag.py` | indexation CSV → ChromaDB, recherche, termes aléatoires |
 | `prompting.py` | templates, normalisation, dédoublonnage, longueur |
-| `agent.py` | boucle LLM ↔ outils, raffinement, conversation |
-| `tools.py` | outil `search_terms` (tool calling) |
-| `orchestrator.py` | machine à états LangGraph, swap VRAM, stop, traces |
-| `workflows.py` | manifest ComfyUI + injection des slots |
+| `agent.py` | boucle LLM ↔ outils, raffinement, retry JSON, capture du reasoning |
+| `tools.py` | outils `search_terms`, `list_categories`, `random_term` (tool calling) |
+| `orchestrator.py` | machine à états LangGraph, swap VRAM, batching, stop, traces |
+| `workflows.py` | manifest ComfyUI + injection slots (prompt/dims/seeds/batch/prefix) |
 | `traces.py` | traces JSONL (fine-tuning) + suppression |
 | `api.py` | API REST (config, jobs, stop, suppression) |
-| `mcp_server.py` | serveur MCP (outils v1) |
+| `mcp_server.py` | serveur MCP (13 outils) |
 
 ---
 
@@ -96,7 +96,8 @@ sequenceDiagram
 ```
 
 Deux modes d'objectif :
-- **« N prompts »** : tout est rédigé en un lot, puis généré en un lot.
+- **« N prompts »** : rédaction par lots de `draft_batch_size` prompts (par défaut tout
+  en un seul lot), chaque lot généré à la suite.
 - **« T minutes »** : boucle *planifier → exécuter → adapter*, avec calibration de la
   durée moyenne par image.
 
@@ -117,10 +118,12 @@ stateDiagram-v2
     finish --> [*]
 ```
 
-- **`plan`** : dimensionne le lot (`N` prompts ou estimation via calibration).
-- **`draft`** : rédige les prompts (LLM + outils + raffinement).
-- **`generate`** : patch le workflow, génère (`batch` images par prompt), swap VRAM.
-- **`adapt`** : met à jour la calibration, recalcule le lot suivant ou termine.
+- **`plan`** : dimensionne le lot (`N` prompts, borné par `draft_batch_size` si renseigné).
+- **`draft`** : rédige les prompts (LLM + outils + raffinement + retry JSON).
+- **`generate`** : patch le workflow, génère — **vrai batching** via le `batch_size`
+  du nœud `EmptyLatentImage` (`batch` images en parallèle par prompt) —, swap VRAM.
+- **`adapt`** : met à jour la calibration, recalcule le lot suivant (borné par
+  `draft_batch_size`) ou termine.
 - **`finish`** : clôture le job en base.
 
 **Checkpointing** : `SqliteSaver` (`checkpoints.sqlite`), un checkpoint par
@@ -137,21 +140,29 @@ proprement en `stopped`.
 flowchart LR
     T[Thème + style + datasets] --> S[System prompt\n(templates)]
     S --> L[LLM + outils]
-    L -->|tool_calls| R[search_terms]
+    L -->|tool_calls| R[search_terms / list_categories / random_term]
     R -->|résultats| L
     L -->|réponse finale JSON| N[Normalisation]
-    N --> M{Longueur OK ?}
-    M -->|non| E[Demande d'enrichissement\n+ suggestions RAG]
+    N --> M{JSON valide ?}
+    M -->|non| RETRY[Relance du LLM\nconsigne de correction]
+    RETRY --> L
+    M -->|oui| C{Longueur OK ?}
+    C -->|non| E[Demande d'enrichissement\n+ suggestions RAG]
     E --> L
-    M -->|oui| P[Prompts + orientations]
+    C -->|oui| P[Prompts + orientations]
 ```
 
 - Les **directives** (style, datasets, mots aléatoires) sont des **templates édités**
   dans `prompts/`, interpolés au runtime — pas de rédaction en dur dans le code.
-- Le LLM peut appeler `search_terms` (tool calling) jusqu'à 6 allers-retours.
+- Le LLM peut appeler `search_terms`, `list_categories` et `random_term`
+  (tool calling) jusqu'à 6 allers-retours.
+- Si la sortie JSON est invalide ou artefactée, le LLM est **relancé** (2 tentatives)
+  avec une consigne de correction, avant un repli de parsing défensif.
+- Le **raisonnement** du LLM est capturé (champ `thinking`) via `reasoning=True`.
 - Si `min_words` est fixé, les prompts trop courts sont enrichis (3 itérations max),
   avec suggestions RAG si un dataset est sélectionné.
-- `random_tags` injecte **un ensemble de termes aléatoires par prompt**.
+- `random_tags` injecte **15 termes aléatoires par prompt** (le LLM garde ceux qui sont
+  cohérents).
 
 ---
 
@@ -160,6 +171,9 @@ flowchart LR
 - Un dataset = un CSV `term, definition, category` (catégorie optionnelle) dans
   `datasets/`, indexé en ChromaDB via `./scripts/index_datasets.sh`.
 - Une collection ChromaDB par dataset (`rag_<nom>`), embeddings Ollama (`bge-m3`).
+- La colonne `category` alimente `list_categories`, `search_terms(category=…)` et
+  `random_term(category=…)` ; les catégories sont stockées dans les métadonnées de la
+  collection (pas de scan).
 - Le RAG est un **outil de recherche**, pas un garde-fou : aucun prompt n'est rejeté.
 
 ---
@@ -175,6 +189,9 @@ Opt-in (`swap_vram`), pertinent quand LLM et ComfyUI partagent le même GPU.
 | `draft` suivant | le LLM est rechargé implicitement |
 
 Principe : **un seul cycle VRAM par lot** (on rédige tout, puis on génère tout).
+
+> Le **batching** (`batch > 1`) multiplie les latents en parallèle dans ComfyUI :
+> prévoir plus de VRAM (à surveiller selon le modèle et la carte).
 
 ---
 
@@ -193,21 +210,27 @@ Les colonnes ajoutées après coup sont migrées automatiquement (`ALTER TABLE`)
 
 ## 9. Interfaces
 
-- **UI web** : `/` (formulaire + suivi). Vanilla JS, pas de build.
+- **UI web** : `/` (formulaire + suivi, lightbox navigable au clavier). Vanilla JS, pas de build.
 - **API REST** : `/api/config`, `/api/jobs` (POST/GET), `/api/jobs/{id}`,
-  `/api/jobs/{id}/stop`, `/api/jobs/{id}/traces` (DELETE), `/api/jobs/{id}` (DELETE),
+  `/api/jobs/{id}/stop`, `/api/jobs/{id}/traces` (DELETE), `/api/jobs/{id}` (DELETE,
+  **garde les traces**), `/api/jobs/{id}/purge` (DELETE, tout supprimer),
   `/api/model_temperature`.
-- **MCP** : Streamable HTTP sur `/mcp`. Outils : `list_workflows`, `list_datasets`,
-  `search_terms`, `create_job`, `get_job`, `list_jobs`, `stop_job`.
+- **MCP** : Streamable HTTP sur `/mcp`. 13 outils : `list_workflows`, `list_datasets`,
+  `list_categories`, `search_terms`, `random_term`, `create_job`, `get_job`,
+  `list_jobs`, `stop_job`, `delete_traces`, `delete_job`, `purge_job`,
+  `model_temperature`.
 
 ---
 
 ## 10. Traces (fine-tuning)
 
 - `drafts.jsonl` : thème → prompts, orientations, tool calls, **conversation complète**
-  (system/user/assistant/tool) — format exploitable pour un fine-tuning.
+  (system/user/assistant/tool, avec `thinking`), modèle et orientation — format
+  exploitable pour un fine-tuning.
 - `images.jsonl` : prompt final → résultat (seed, dimensions, statut, durée, erreur).
-- Chaque job peut être **retiré des traces** sans être supprimé.
+- Les traces sont **optionnelles par job** (`enable_traces`, case « Tracer »).
+- Chaque job peut être **retiré des traces** sans être supprimé ; `delete` garde les
+  traces, `purge` supprime tout.
 
 ---
 

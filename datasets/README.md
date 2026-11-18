@@ -39,3 +39,5 @@ goggles,lunettes de protection,accessoire
 - Après avoir **modifié** un CSV, relancez le script pour réindexer.
 - Privilégiez des définitions courtes (1 à 2 phrases) : ce sont elles qui sont utilisées
   pour la recherche de similarité.
+- La colonne `category` alimente les outils RAG (`list_categories`,
+  `search_terms(category=…)`, `random_term(category=…)`).

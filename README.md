@@ -48,17 +48,27 @@ Remplissez le formulaire de l'UI :
 | Datasets RAG | cochez pour aider le LLM à trouver de vrais termes |
 | Mots aléatoires (RAG) | ajoute des termes variés (à cocher après un dataset) |
 | Suffixe positif / négatif | texte concaténé au prompt |
-| Batch | nombre d'images par prompt (pour retenter si besoin) |
+| Batch | **vrai batching** : N images générées en parallèle par prompt (1 envoi ComfyUI = N latents) |
 | Longueur min | force le LLM à enrichir les prompts trop courts |
+| Taille du lot de rédaction | découpe la rédaction en N prompts par appel LLM (vide = tout en un appel) |
+| Sous-dossier de sortie | redirige les images dans un sous-dossier de l'output ComfyUI (ex. `batch-prolificN1`) |
 | Température | laissez vide = défaut du modèle, sinon réglez la créativité |
+| Tracer (dataset fine-tuning) | décochez pour ne pas écrire les traces de ce job |
 
-Le panneau de droite affiche la progression, les miniatures, et permet d'**arrêter**,
-de **retirer un job des traces** (dataset de fine-tuning) ou de **supprimer le job**.
+Le panneau de droite affiche la progression et les miniatures. Cliquez sur une image
+pour l'agrandir : naviguez aux **flèches du clavier** (← →) ou aux boutons ‹ ›,
+**Échap** pour fermer. Chaque job peut être **arrêté**, **retiré des traces**,
+**supprimé** (garde les traces) ou **purgé** (job + images + traces).
 
 ## Ajouter un dataset (tags / vocabulaire)
 
 Voir [datasets/README.md](datasets/README.md). En résumé : déposez un CSV
 (`term, definition, category`) dans `datasets/`, puis lancez `./scripts/index_datasets.sh`.
+
+## Astuces de prompt
+
+Des consignes prêtes à copier-coller (diversité, éviter les tags hors-sujet, cadrages,
+rendu…) : voir [prompts/snippets.md](prompts/snippets.md).
 
 ## Piloter Prolific via MCP (ex. avec pi)
 
@@ -77,7 +87,8 @@ Puis, dans une session pi, les outils sont disponibles directement :
 `mcp__prolific__list_workflows`, `mcp__prolific__list_datasets`,
 `mcp__prolific__list_categories`, `mcp__prolific__search_terms`,
 `mcp__prolific__random_term`, `mcp__prolific__create_job`, `mcp__prolific__get_job`,
-`mcp__prolific__list_jobs`, `mcp__prolific__stop_job`.
+`mcp__prolific__list_jobs`, `mcp__prolific__stop_job`, `mcp__prolific__delete_traces`,
+`mcp__prolific__delete_job`, `mcp__prolific__purge_job`, `mcp__prolific__model_temperature`.
 
 Vous pouvez demander, par exemple : « liste les workflows, puis génère 5 images de
 femmes fatales steampunk avec le workflow test-dollamor ».
@@ -88,7 +99,8 @@ femmes fatales steampunk avec le workflow test-dollamor ».
 
 ## Où sont les choses
 
-- **Images** : dans le dossier de sortie de ComfyUI (défini par votre workflow).
+- **Images** : dans le dossier de sortie de ComfyUI (`ComfyUI/output`), éventuellement
+  dans un sous-dossier si vous renseignez « Sous-dossier de sortie » (ex. `batch-prolificN1`).
 - **Traces** (pour un futur fine-tuning) : dossier `traces/`, supprimables par job.
 - **Logs** : console (ou fichier si `logging.file` est renseigné dans `config.yaml`).
 - **Données locales** : `prolific.sqlite` (jobs, images, calibration).
