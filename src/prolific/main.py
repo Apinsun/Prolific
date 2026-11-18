@@ -62,7 +62,15 @@ def create_app() -> FastAPI:
         orchestrator=orchestrator,
         trace_logger=trace_logger,
     )
-    mcp = build_mcp(orchestrator=orchestrator, db=db, rag=rag, manifest=manifest)
+    mcp = build_mcp(
+        orchestrator=orchestrator,
+        db=db,
+        rag=rag,
+        manifest=manifest,
+        config=config,
+        ollama=ollama,
+        trace_logger=trace_logger,
+    )
     mcp_app = mcp.http_app(path="/", transport="streamable-http")
 
     # le lifespan du MCP doit être transmis à FastAPI (sinon le gestionnaire de

@@ -5,13 +5,17 @@ Transport : Streamable HTTP (monté sur le même process FastAPI, chemin `/mcp`)
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
 
+from prolific.clients.ollama import OllamaClient
+from prolific.config import Config
 from prolific.db import Database, serialize_job
 from prolific.orchestrator import Orchestrator
 from prolific.rag import RagIndex
+from prolific.traces import TraceLogger
 
 MCP_NAME = "prolific"
 
@@ -22,6 +26,9 @@ def build_mcp(
     db: Database,
     rag: RagIndex,
     manifest: dict[str, Any],
+    config: Config,
+    ollama: OllamaClient,
+    trace_logger: TraceLogger | None = None,
 ) -> FastMCP:
     """Construit le serveur MCP avec les outils v1."""
     mcp = FastMCP(
@@ -102,6 +109,8 @@ def build_mcp(
         batch: int = 1,
         min_words: int = 0,
         random_tags: bool = False,
+        positive_suffix: str | None = None,
+        negative: str | None = None,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -120,6 +129,8 @@ def build_mcp(
             batch: Nombre d'images par prompt (seeds différents).
             min_words: Longueur minimale d'un prompt (0 = pas de minimum).
             random_tags: Injecter des termes aléatoires du RAG (si datasets sélectionnés).
+            positive_suffix: Texte concaténé au prompt positif.
+            negative: Prompt négatif (remplace celui du workflow).
         """
         if objective_type == "count":
             if not n:
@@ -145,6 +156,8 @@ def build_mcp(
             batch=batch,
             min_words=min_words,
             random_tags=random_tags,
+            positive_suffix=positive_suffix,
+            negative=negative,
         )
 
     @mcp.tool()
@@ -167,5 +180,36 @@ def build_mcp(
         """Demande l'arrêt propre d'un job (pris en compte entre deux images)."""
         orchestrator.stop(job_id)
         return f"Arrêt demandé pour le job {job_id}."
+
+    @mcp.tool()
+    def delete_traces(job_id: int) -> str:
+        """Retire un job des traces (dataset de fine-tuning), sans supprimer le job."""
+        if trace_logger is not None:
+            trace_logger.delete_job(job_id)
+        return f"Traces du job {job_id} retirées."
+
+    @mcp.tool()
+    def delete_job(job_id: int) -> str:
+        """Supprime un job, ses images et ses traces (fichiers si output_dir configuré)."""
+        if db.get_job(job_id) is None:
+            return f"Job {job_id} introuvable."
+        orchestrator.stop(job_id)
+        if config.comfyui.output_dir:
+            out = Path(config.comfyui.output_dir)
+            for img in db.list_images(job_id):
+                if img.get("path"):
+                    try:
+                        (out / img["path"]).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+        db.delete_job(job_id)
+        if trace_logger is not None:
+            trace_logger.delete_job(job_id)
+        return f"Job {job_id} supprimé."
+
+    @mcp.tool()
+    def model_temperature(model: str) -> float | None:
+        """Température déclarée par un modèle Ollama (None = défaut du modèle)."""
+        return ollama.model_temperature(model)
 
     return mcp
