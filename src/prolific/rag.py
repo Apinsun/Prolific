@@ -7,6 +7,7 @@ sa propre collection ChromaDB `rag_<nom>`. Embeddings via Ollama (`/api/embed`).
 from __future__ import annotations
 
 import csv
+import json
 import random
 from pathlib import Path
 from typing import Any
@@ -51,7 +52,14 @@ class RagIndex:
 
         name = self._collection_name(dataset)
         self._drop_collection(name)
-        collection = self.client.create_collection(name=name, metadata={"hnsw:space": "cosine"})
+        distinct_categories = sorted({c for c in categories if c})
+        collection = self.client.create_collection(
+            name=name,
+            metadata={
+                "hnsw:space": "cosine",
+                "categories": json.dumps(distinct_categories),
+            },
+        )
 
         for i in range(0, len(terms), batch_size):
             batch_terms = terms[i : i + batch_size]
@@ -87,8 +95,9 @@ class RagIndex:
         *,
         top_k: int = 10,
         threshold: float = 0.3,
+        category: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Recherche un concept sur les datasets donnés (tous si None)."""
+        """Recherche un concept (optionnellement filtré par catégorie)."""
         query_embedding = self.ollama.embed(self.embed_model, [concept])[0]
 
         if datasets is None:
@@ -100,10 +109,14 @@ class RagIndex:
                 collection = self.client.get_collection(self._collection_name(dataset))
             except Exception:
                 continue  # dataset non indexé : on l'ignore
+            kwargs: dict[str, Any] = {}
+            if category:
+                kwargs["where"] = {"category": category}
             hit = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=min(top_k * 2, 100),
                 include=["documents", "metadatas", "distances"],
+                **kwargs,
             )
             for i in range(len(hit["ids"][0])):
                 meta = hit["metadatas"][0][i]
@@ -131,22 +144,52 @@ class RagIndex:
             if c.name.startswith(prefix)
         )
 
-    def random_terms(self, datasets: list[str], k: int = 5) -> list[str]:
-        """Tire jusqu'à k termes aléatoires dans les datasets (pour varier les prompts)."""
+    def list_categories(self, datasets: list[str] | None = None) -> list[str]:
+        """Liste les catégories distinctes des datasets (tous si None)."""
+        if datasets is None:
+            datasets = self.list_datasets()
+        cats: set[str] = set()
+        for dataset in datasets:
+            try:
+                collection = self.client.get_collection(self._collection_name(dataset))
+            except Exception:
+                continue
+            metadata = getattr(collection, "metadata", None) or {}
+            raw = metadata.get("categories") or "[]"
+            try:
+                cats.update(json.loads(raw))
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return sorted(cats)
+
+    def random_terms(
+        self,
+        datasets: list[str] | None = None,
+        k: int = 5,
+        category: str | None = None,
+    ) -> list[str]:
+        """Tire jusqu'à k termes aléatoires (optionnellement dans une catégorie)."""
+        if datasets is None:
+            datasets = self.list_datasets()
         terms: list[str] = []
         for dataset in datasets:
             try:
                 collection = self.client.get_collection(self._collection_name(dataset))
             except Exception:
                 continue
-            count = collection.count()
-            if count <= 0:
-                continue
-            offset = random.randint(0, max(0, count - 1))
-            res = collection.get(
-                limit=min(k, count), offset=offset, include=["metadatas"]
-            )
-            for meta in res.get("metadatas", []):
+            if category:
+                res = collection.get(where={"category": category}, include=["metadatas"])
+                metas = res.get("metadatas", [])
+            else:
+                count = collection.count()
+                if count <= 0:
+                    continue
+                offset = random.randint(0, max(0, count - 1))
+                res = collection.get(
+                    limit=min(k, count), offset=offset, include=["metadatas"]
+                )
+                metas = res.get("metadatas", [])
+            for meta in metas:
                 term = meta.get("term")
                 if term:
                     terms.append(term)

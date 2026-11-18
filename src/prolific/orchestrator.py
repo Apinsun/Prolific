@@ -36,7 +36,11 @@ from prolific.config import Config
 from prolific.db import Database
 from prolific.prompting import PROMPTS_DIR, compose_positive
 from prolific.rag import RagIndex
-from prolific.tools import make_search_terms_tool
+from prolific.tools import (
+    make_list_categories_tool,
+    make_random_term_tool,
+    make_search_terms_tool,
+)
 from prolific.traces import TraceLogger
 from prolific.workflows import list_orientations, patch_workflow, resolve_format
 
@@ -201,7 +205,13 @@ class Orchestrator:
         ][-self.MAX_HISTORY :]
 
         datasets = state.get("datasets", [])
-        tools = [make_search_terms_tool(self.rag, datasets)] if datasets else []
+        tools = []
+        if datasets:
+            tools = [
+                make_search_terms_tool(self.rag, datasets),
+                make_list_categories_tool(self.rag, datasets),
+                make_random_term_tool(self.rag, datasets),
+            ]
         random_terms: list[list[str]] = []
         if state.get("random_tags") and datasets:
             random_terms = [

@@ -57,6 +57,7 @@ def build_mcp(
         concept: str,
         dataset: str | None = None,
         top_k: int = 10,
+        category: str | None = None,
     ) -> list[dict[str, Any]]:
         """Recherche des termes (tags ou vocabulaire) correspondant à un concept.
 
@@ -64,9 +65,26 @@ def build_mcp(
             concept: Concept ou description en langage naturel.
             dataset: Nom d'un dataset précis (optionnel ; tous sinon).
             top_k: Nombre maximum de résultats.
+            category: Catégorie optionnelle pour filtrer (voir list_categories).
         """
         datasets = [dataset] if dataset else None
-        return rag.search(concept, datasets=datasets, top_k=top_k)
+        return rag.search(concept, datasets=datasets, top_k=top_k, category=category)
+
+    @mcp.tool()
+    def list_categories(dataset: str | None = None) -> list[str]:
+        """Liste les catégories disponibles dans les datasets RAG."""
+        datasets = [dataset] if dataset else None
+        return rag.list_categories(datasets)
+
+    @mcp.tool()
+    def random_term(
+        category: str | None = None,
+        dataset: str | None = None,
+        count: int = 3,
+    ) -> list[str]:
+        """Tire des termes aléatoires (dans une catégorie si précisée)."""
+        datasets = [dataset] if dataset else None
+        return rag.random_terms(datasets, k=count, category=category)
 
     @mcp.tool()
     def create_job(
