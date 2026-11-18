@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import uvicorn
@@ -29,6 +30,11 @@ def create_app() -> FastAPI:
     config = load_config()
     setup_logging(config)
     db = Database()
+    interrupted = db.mark_interrupted()
+    if interrupted:
+        logging.getLogger("prolific").info(
+            "%d job(s) interrompu(s) marqué(s) comme stoppé(s) au démarrage", interrupted
+        )
     ollama = OllamaClient(config.llm.base_url)
     comfyui = ComfyUIClient(config.comfyui.url)
     rag = RagIndex(Path(config.rag.chroma_dir), ollama, config.rag.embed_model)
@@ -81,4 +87,10 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    uvicorn.run("prolific.main:app", host="127.0.0.1", port=8000, reload=True)
+    config = load_config()
+    uvicorn.run(
+        "prolific.main:app",
+        host=config.server.host,
+        port=config.server.port,
+        reload=False,
+    )

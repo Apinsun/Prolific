@@ -190,6 +190,27 @@ class Database:
     def list_jobs(self, limit: int = 50) -> list[dict[str, Any]]:
         return self._read_all("SELECT * FROM jobs ORDER BY id DESC LIMIT ?", (limit,))
 
+    def mark_interrupted(self) -> int:
+        """Marque les jobs restés 'running'/'pending' (orphelins) comme interrompus.
+
+        À appeler au démarrage du service : un job dont le thread est mort après un
+        arrêt du process ne doit pas rester 'running' indéfiniment.
+        """
+        now = _now()
+        with self._lock:
+            conn = self._connect()
+            try:
+                cur = conn.execute(
+                    "UPDATE jobs SET status = 'stopped', "
+                    "error = 'interrompu (redémarrage du service)', "
+                    "finished_at = ?, updated_at = ? WHERE status IN ('running', 'pending')",
+                    (now, now),
+                )
+                conn.commit()
+                return cur.rowcount
+            finally:
+                conn.close()
+
     def update_job(
         self,
         job_id: int,
