@@ -223,6 +223,34 @@ class Database:
     def list_jobs(self, limit: int = 50) -> list[dict[str, Any]]:
         return self._read_all("SELECT * FROM jobs ORDER BY id DESC LIMIT ?", (limit,))
 
+    def search_jobs(
+        self,
+        *,
+        search: str = "",
+        status: str = "",
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Recherche/filtre les jobs (pagination). Retourne (lignes, total)."""
+        where: list[str] = []
+        params: list[Any] = []
+        if search:
+            like = f"%{search}%"
+            where.append("(theme LIKE ? OR workflow LIKE ? OR CAST(id AS TEXT) LIKE ?)")
+            params += [like, like, like]
+        if status:
+            where.append("status = ?")
+            params.append(status)
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        total = self._read_one(
+            f"SELECT COUNT(*) AS c FROM jobs {where_sql}", tuple(params)
+        )["c"]
+        rows = self._read_all(
+            f"SELECT * FROM jobs {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?",
+            tuple(params) + (limit, offset),
+        )
+        return rows, total
+
     def mark_interrupted(self) -> int:
         """Marque les jobs restés 'running'/'pending' (orphelins) comme interrompus.
 

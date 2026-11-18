@@ -110,7 +110,21 @@
         <h2>Jobs</h2>
         <button id="refresh-btn" class="ghost" type="button">Rafraîchir</button>
       </div>
+      <div class="jobs-filters">
+        <input id="jobs-search" type="search" placeholder="Rechercher (thème, id, workflow)...">
+        <select id="jobs-status">
+          <option value="">Tous les statuts</option>
+          <option value="queued">En file</option>
+          <option value="running">En cours</option>
+          <option value="done">Terminé</option>
+          <option value="failed">Échoué</option>
+          <option value="stopped">Arrêté</option>
+        </select>
+      </div>
       <ul id="job-list"></ul>
+      <div class="jobs-more">
+        <button id="load-more-btn" class="ghost" type="button" hidden>Charger plus</button>
+      </div>
       <div id="job-detail"><p class="meta">Sélectionne un job pour voir ses images.</p></div>
     </section>
   </main>

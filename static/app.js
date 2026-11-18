@@ -6,6 +6,12 @@ let currentJobId = null;
 let pollTimer = null;
 let lastDetailKey = null;
 let detailTab = 'images';
+const jobsLimit = 20;
+let jobsOffset = 0;
+let jobsTotal = 0;
+let jobsSearch = '';
+let jobsStatus = '';
+let searchTimer = null;
 
 async function api(path, opts) {
   const res = await fetch('/api' + path, opts);
@@ -76,18 +82,106 @@ function formToPayload() {
   };
 }
 
-async function loadJobs() {
-  const list = await api('/jobs');
-  $('#job-list').innerHTML = list.map((j) => `
+function renderJobList(jobs) {
+  return jobs.map((j) => `
     <li class="job" data-id="${j.id}">
       <span class="job-id">#${j.id}</span>
       <span class="job-theme">${escapeHtml(j.theme)}</span>
       <span class="job-progress">${j.images_done}/${j.images_target ?? '—'}</span>
       <span class="badge ${j.status}">${j.status}</span>
+      <button type="button" class="reuse-btn ghost" data-id="${j.id}" title="Copier les paramètres dans le formulaire">Réutiliser</button>
     </li>
   `).join('');
+}
+
+function bindJobList() {
   document.querySelectorAll('#job-list li').forEach((li) =>
-    li.addEventListener('click', () => loadJobDetail(parseInt(li.dataset.id, 10), { force: true })));
+    li.addEventListener('click', (e) => {
+      if (e.target.closest('.reuse-btn')) return;
+      loadJobDetail(parseInt(li.dataset.id, 10), { force: true });
+    }));
+  document.querySelectorAll('#job-list .reuse-btn').forEach((btn) =>
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyJobParams(parseInt(btn.dataset.id, 10));
+    }));
+}
+
+async function fetchJobs(offset = 0, limit = jobsLimit) {
+  const q = new URLSearchParams({
+    search: jobsSearch, status: jobsStatus,
+    offset: String(offset), limit: String(limit),
+  });
+  return await api('/jobs?' + q.toString());
+}
+
+function updateLoadMoreBtn() {
+  const btn = $('#load-more-btn');
+  btn.hidden = jobsOffset >= jobsTotal;
+}
+
+async function refreshJobs() {
+  const data = await fetchJobs(0, Math.max(jobsLimit, jobsOffset));
+  jobsTotal = data.total;
+  $('#job-list').innerHTML = renderJobList(data.jobs);
+  jobsOffset = data.jobs.length;
+  bindJobList();
+  updateLoadMoreBtn();
+}
+
+async function loadMoreJobs() {
+  const data = await fetchJobs(jobsOffset, jobsLimit);
+  jobsTotal = data.total;
+  $('#job-list').insertAdjacentHTML('beforeend', renderJobList(data.jobs));
+  jobsOffset += data.jobs.length;
+  bindJobList();
+  updateLoadMoreBtn();
+}
+
+function resetJobs() {
+  jobsOffset = 0;
+  refreshJobs();
+}
+
+async function copyJobParams(id) {
+  const job = await api('/jobs/' + id);
+  $('#theme').value = job.theme ?? '';
+  $('#workflow').value = job.workflow ?? '';
+  $('#model').value = job.model ?? '';
+  $('#style').value = job.style ?? 'tags';
+  $('#preset').value = job.preset ?? '';
+  $('#orientation').value = job.orientation ?? 'carre';
+
+  const obj = job.objective || {};
+  const isDuration = obj.type === 'duration';
+  document.querySelector(`input[name="objective_type"][value="${isDuration ? 'duration' : 'count'}"]`).checked = true;
+  $('#duration-wrap').hidden = !isDuration;
+  if (isDuration) $('#minutes').value = obj.minutes ?? 20;
+  else $('#n').value = obj.n ?? 10;
+
+  const datasets = job.datasets || [];
+  document.querySelectorAll('input[name="dataset"]').forEach((c) => {
+    c.checked = datasets.includes(c.value);
+  });
+  const hasRandom = !!job.random_tags && datasets.length > 0;
+  $('#random_tags').disabled = datasets.length === 0;
+  $('#random_tags').checked = hasRandom;
+  $('#random_tags_count').disabled = !hasRandom;
+  $('#random_tags_count').value = job.random_tags_count ?? 15;
+
+  $('#swap_vram').checked = !!job.swap_vram;
+  $('#enable_traces').checked = job.enable_traces == null ? true : !!job.enable_traces;
+  $('#positive_suffix').value = job.positive_suffix ?? '';
+  $('#negative').value = job.negative ?? '';
+  $('#filename_prefix').value = job.filename_prefix ?? '';
+  $('#draft_batch_size').value = job.draft_batch_size ?? '';
+  $('#batch').value = job.batch ?? 1;
+  $('#min_words').value = job.min_words ?? 0;
+  $('#temperature').value = job.temperature ?? '';
+  $('#seed').value = job.seed ?? '';
+
+  updateTemperatureHint();
+  document.getElementById('panel-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function renderJobParams(job) {
@@ -252,7 +346,7 @@ function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
     try {
-      await loadJobs();
+      await refreshJobs();
       if (currentJobId != null) await loadJobDetail(currentJobId);
     } catch (e) { /* le serveur peut être occupé : on ignore */ }
   }, 2000);
@@ -270,7 +364,9 @@ $('#job-form').addEventListener('submit', async (e) => {
       body: JSON.stringify(formToPayload()),
     });
     currentJobId = job_id;
-    await loadJobs();
+    jobsSearch = ''; jobsStatus = '';
+    $('#jobs-search').value = ''; $('#jobs-status').value = '';
+    await refreshJobs();
     await loadJobDetail(job_id, { force: true });
     startPolling();
   } catch (err) {
@@ -286,7 +382,18 @@ document.querySelectorAll('input[name="objective_type"]').forEach((r) =>
     $('#duration-wrap').hidden = isCount;
   }));
 
-$('#refresh-btn').addEventListener('click', () => { loadJobs(); if (currentJobId != null) loadJobDetail(currentJobId, { force: true }); });
+$('#refresh-btn').addEventListener('click', () => { refreshJobs(); if (currentJobId != null) loadJobDetail(currentJobId, { force: true }); });
+
+$('#jobs-search').addEventListener('input', () => {
+  jobsSearch = $('#jobs-search').value.trim();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(resetJobs, 300);
+});
+$('#jobs-status').addEventListener('change', () => {
+  jobsStatus = $('#jobs-status').value;
+  resetJobs();
+});
+$('#load-more-btn').addEventListener('click', loadMoreJobs);
 
 $('#model').addEventListener('change', updateTemperatureHint);
 
@@ -303,5 +410,5 @@ async function updateTemperatureHint() {
 /* — init — */
 (async () => {
   try { await loadConfig(); } catch (e) { console.warn('config:', e); }
-  try { await loadJobs(); startPolling(); } catch (e) { console.warn('jobs:', e); }
+  try { await refreshJobs(); startPolling(); } catch (e) { console.warn('jobs:', e); }
 })();

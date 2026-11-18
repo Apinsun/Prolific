@@ -149,8 +149,14 @@ def build_api(
         return {"job_id": job_id}
 
     @router.get("/jobs")
-    def list_jobs() -> list[dict[str, Any]]:
-        return [serialize_job(job) for job in db.list_jobs(100)]
+    def list_jobs(
+        search: str = "",
+        status: str = "",
+        offset: int = 0,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        jobs, total = db.search_jobs(search=search, status=status, offset=offset, limit=limit)
+        return {"jobs": [serialize_job(job) for job in jobs], "total": total}
 
     @router.get("/jobs/{job_id}")
     def get_job(job_id: int) -> dict[str, Any]:
