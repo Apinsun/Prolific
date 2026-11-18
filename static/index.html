@@ -42,11 +42,12 @@
         </fieldset>
 
         <div class="grid-2">
-          <label>Orientation
+          <label>Dimensions
             <select id="orientation">
               <option value="carre">Carré</option>
               <option value="paysage">Paysage</option>
               <option value="portrait">Portrait</option>
+              <option value="random">Aléatoire</option>
             </select>
           </label>
           <label>Type de prompt
@@ -85,6 +86,10 @@
       <div id="job-detail"><p class="meta">Sélectionne un job pour voir ses images.</p></div>
     </section>
   </main>
+
+  <div id="lightbox" class="lightbox" hidden>
+    <img id="lightbox-img" src="" alt="">
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

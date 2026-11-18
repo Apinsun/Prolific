@@ -86,7 +86,21 @@ async function loadJobDetail(id) {
     await api('/jobs/' + id + '/stop', { method: 'POST' });
     loadJobDetail(id);
   });
+  attachLightbox();
 }
+
+function attachLightbox() {
+  const lb = $('#lightbox');
+  const lbImg = $('#lightbox-img');
+  document.querySelectorAll('#job-detail .thumbs img').forEach((img) => {
+    img.addEventListener('click', () => {
+      lbImg.src = img.src;
+      lb.hidden = false;
+    });
+  });
+}
+
+$('#lightbox').addEventListener('click', () => { $('#lightbox').hidden = true; });
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);

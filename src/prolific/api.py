@@ -14,7 +14,7 @@ from prolific.orchestrator import Orchestrator
 from prolific.rag import RagIndex
 
 STYLES = ["tags", "prose", "hybrid"]
-ORIENTATIONS = ["carre", "paysage", "portrait"]
+ORIENTATIONS = ["carre", "paysage", "portrait", "random"]
 
 
 class JobCreate(BaseModel):

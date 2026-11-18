@@ -89,7 +89,7 @@ def build_mcp(
             objective_type: 'count' (n images) ou 'duration' (minutes).
             n: Nombre d'images (si objective_type='count').
             minutes: Durée du job (si objective_type='duration').
-            orientation: carre | paysage | portrait.
+            orientation: carre | paysage | portrait | random.
             style: tags | prose | hybrid (défaut : celui du workflow).
             datasets: Datasets RAG actifs pour la rédaction.
             swap_vram: Décharger/recharger les modèles autour des lots.

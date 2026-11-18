@@ -268,6 +268,8 @@ class Orchestrator:
                     negative=negative,
                     orientation=state.get("orientation", "carre"),
                     seed=state.get("seed"),
+                    width=width,
+                    height=height,
                 )
                 image_id = self.db.add_image(
                     job_id,

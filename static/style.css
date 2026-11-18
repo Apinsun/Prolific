@@ -121,3 +121,13 @@ button.ghost { background: transparent; color: var(--accent); border: 1px solid 
 .thumbs figure { margin: 0; }
 .thumbs img { width: 100%; border-radius: 6px; border: 1px solid var(--border); background: #000; }
 .thumbs figcaption { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-word; }
+.thumbs img { cursor: zoom-in; }
+
+.lightbox {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; cursor: zoom-out; padding: 24px;
+}
+.lightbox[hidden] { display: none; }
+.lightbox img { max-width: 95vw; max-height: 95vh; object-fit: contain; border-radius: 4px; }

@@ -25,10 +25,14 @@ def list_workflow_names(manifest: dict[str, Any]) -> list[str]:
 
 
 def resolve_format(manifest: dict[str, Any], name: str, orientation: str) -> tuple[int, int]:
-    """Résout une orientation (carre/paysage/portrait) en (largeur, hauteur)."""
+    """Résout une orientation (carre/paysage/portrait/random) en (largeur, hauteur)."""
     if name not in manifest:
         raise WorkflowError(f"Workflow inconnu : {name!r}")
     formats = manifest[name].get("formats", {})
+    if not formats:
+        raise WorkflowError(f"Aucun format déclaré pour {name!r}")
+    if orientation == "random":
+        orientation = random.choice(list(formats.keys()))
     if orientation not in formats:
         raise WorkflowError(
             f"Format invalide {orientation!r} pour {name!r}. Valides : {list(formats)}"
@@ -46,6 +50,8 @@ def patch_workflow(
     negative: str | None = None,
     orientation: str = "carre",
     seed: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> dict[str, Any]:
     """Charge un workflow et y injecte prompt/dimensions/seeds via les slots déclarés.
 
@@ -71,7 +77,8 @@ def patch_workflow(
         if node in wf and "inputs" in wf[node]:
             wf[node]["inputs"][s["field"]] = value
 
-    width, height = resolve_format(manifest, name, orientation)
+    if width is None or height is None:
+        width, height = resolve_format(manifest, name, orientation)
 
     set_slot("positive", positive)
     if negative:
