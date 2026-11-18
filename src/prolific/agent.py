@@ -25,6 +25,7 @@ def draft_prompts_agent(
     theme: str,
     style: str = "tags",
     datasets: list[str] | None = None,
+    history: list[str] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
 ) -> list[str]:
     """Rédige `n` prompts sur un thème via une boucle LLM↔outils, puis normalise.
@@ -33,7 +34,7 @@ def draft_prompts_agent(
     nécessaire, puis doit produire le JSON final {"prompts": [...]} qui est normalisé.
     """
     system = build_draft_system(style=style, datasets=datasets, prompts_dir=prompts_dir)
-    user = build_draft_user(n=n, theme=theme, prompts_dir=prompts_dir)
+    user = build_draft_user(n=n, theme=theme, history=history, prompts_dir=prompts_dir)
 
     llm_with_tools = llm.bind_tools(tools) if tools else llm
     messages: list = [SystemMessage(content=system), HumanMessage(content=user)]

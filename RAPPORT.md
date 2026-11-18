@@ -91,6 +91,7 @@ Le state est un `TypedDict` (les champs sont optionnels, remplis au fil de l'eau
 | `continue_loop` | `bool` | décision d'`adapt` : reboucler ou finir |
 | `status` | `str` | `running` \| `done` \| `stopped` \| `failed` |
 | `error` | `str \| None` | dernière erreur, le cas échéant |
+| `stalled` | `int` | lots consécutifs sans nouveau prompt (garde anti-boucle) |
 
 ### 3.3 Nœuds
 
@@ -101,12 +102,16 @@ Le state est un `TypedDict` (les champs sont optionnels, remplis au fil de l'eau
 - Sorties : `target`, `batch_size`, `deadline`, `started_at`, `generated=0`, `status="running"`.
 
 #### `draft` — rédaction des prompts
+- Vérifie la deadline **avant** de lancer (le temps de rédaction compte dans le budget).
+- Injecte l'**historique** des prompts déjà générés dans ce job (soft, anti-répétition).
 - Construit l'outil `search_terms` (si datasets actifs) et un `ChatOllama`.
 - Appelle `draft_prompts_agent` (boucle LLM ↔ outils, max 6 itérations) avec
-  `n = batch_size`, le thème, le style et les datasets.
-- Normalise la sortie en liste de prompts (`normalize_draft`).
+  `n = batch_size`, le thème, le style, les datasets et l'historique.
+- Normalise la sortie (`normalize_draft`) puis **dédoublonne** (`dedupe`) contre
+  l'historique et au sein du lot.
+- Si aucun nouveau prompt n'est produit, incrémente `stalled`.
 - En cas d'échec : pose `error` + `status="failed"` + `continue_loop=False`.
-- Sorties : `prompts` (ou erreur).
+- Sorties : `prompts` (ou erreur), `stalled`.
 
 #### `generate` — génération du lot
 1. Si `swap_vram` : **décharge le LLM** (`ollama stop`) une fois, pour tout le lot.
@@ -164,6 +169,22 @@ def _should_continue(state) -> str:
   met `status="stopped"` et `continue_loop=False` → le graphe va vers `finish`.
 - Limitation assumée : le stop n'interrompt pas une rédaction LLM en cours (pris en compte
   au prochain passage dans `generate`).
+
+### 3.7 Anti-répétition entre lots
+Sans mémoire, le LLM répéterait des prompts d'un lot à l'autre (mode durée, lots de
+rattrapage). Deux mécanismes complémentaires :
+
+1. **Historique injecté (soft)** : `draft` passe au LLM les prompts déjà générés
+   (`history_hint.txt`, tronqué à `MAX_HISTORY = 200`) avec la consigne de ne pas les
+   répéter et de varier.
+2. **Dédoublonnage déterministe (hard)** : `dedupe()` supprime les doublons exacts
+   (vs historique et au sein du lot) après rédaction — indépendant du LLM.
+
+Garde anti-boucle : si deux lots consécutifs ne produisent aucun nouveau prompt
+(`stalled ≥ 2`), `adapt` termine le job proprement.
+
+*(v2 : filtre de similarité par Jaccard sur les tags pour éliminer aussi les prompts
+« presque identiques », pas seulement les doublons exacts.)*
 
 ---
 

@@ -70,8 +70,21 @@ def build_draft_system(
     )
 
 
-def build_draft_user(*, n: int, theme: str, prompts_dir: Path = PROMPTS_DIR) -> str:
-    return _render(load_template("draft_user.txt", prompts_dir), n=n, theme=theme)
+def build_draft_user(
+    *,
+    n: int,
+    theme: str,
+    history: list[str] | None = None,
+    prompts_dir: Path = PROMPTS_DIR,
+) -> str:
+    base = _render(load_template("draft_user.txt", prompts_dir), n=n, theme=theme)
+    if history:
+        hint = _render(
+            load_template("history_hint.txt", prompts_dir),
+            prompts="\n".join(f"- {p}" for p in history),
+        )
+        return f"{base}\n\n{hint}"
+    return base
 
 
 # ── normalisation ────────────────────────────────────────────────────
@@ -127,6 +140,18 @@ def clean_prompt(text: str, style: str = "tags") -> str:
 
     # prose / hybrid : une seule ligne, espaces normalisés
     return re.sub(r"\s+", " ", text).strip()
+
+
+def dedupe(prompts: list[str], history: list[str]) -> list[str]:
+    """Retire les doublons exacts (vs historique et au sein du lot), en gardant l'ordre."""
+    seen = set(history)
+    out: list[str] = []
+    for prompt in prompts:
+        if prompt in seen:
+            continue
+        seen.add(prompt)
+        out.append(prompt)
+    return out
 
 
 def normalize_draft(raw: str, style: str = "tags") -> list[str]:

@@ -31,7 +31,7 @@ from prolific.clients.comfyui import ComfyUIClient
 from prolific.clients.ollama import OllamaClient
 from prolific.config import Config
 from prolific.db import Database
-from prolific.prompting import PROMPTS_DIR
+from prolific.prompting import PROMPTS_DIR, dedupe
 from prolific.rag import RagIndex
 from prolific.tools import make_search_terms_tool
 from prolific.workflows import patch_workflow, resolve_format
@@ -61,6 +61,7 @@ class OrchestratorState(TypedDict, total=False):
     continue_loop: bool
     status: str                # running | done | stopped | failed
     error: str | None
+    stalled: int
 
 
 def _now() -> str:
@@ -72,6 +73,7 @@ class Orchestrator:
 
     PROBE_BATCH = 3            # lot de sonde quand aucune calibration
     DURATION_MARGIN = 30.0     # marge (s) réservée au swap final / fin de job
+    MAX_HISTORY = 200          # nb max de prompts d'historique injectés au LLM
 
     def __init__(
         self,
@@ -167,6 +169,16 @@ class Orchestrator:
         if batch_size <= 0:
             return {"prompts": [], "continue_loop": False}
 
+        # le temps de rédaction compte dans le budget : on ne lance pas un lot
+        # si la deadline est déjà dépassée.
+        deadline = state.get("deadline")
+        if deadline is not None and time.monotonic() >= deadline:
+            return {"prompts": [], "continue_loop": False}
+
+        history = [
+            img["positive"] for img in self.db.list_images(state["job_id"])
+        ][-self.MAX_HISTORY :]
+
         datasets = state.get("datasets", [])
         tools = [make_search_terms_tool(self.rag, datasets)] if datasets else []
         model = state.get("model") or self.config.llm.model
@@ -180,6 +192,7 @@ class Orchestrator:
                 theme=state["theme"],
                 style=state.get("style", "tags"),
                 datasets=datasets,
+                history=history,
                 prompts_dir=self.prompts_dir,
             )
         except Exception as exc:  # noqa: BLE001 — on capture tout pour tracer le job
@@ -188,7 +201,11 @@ class Orchestrator:
                 "status": "failed",
                 "continue_loop": False,
             }
-        return {"prompts": prompts}
+
+        prompts = dedupe(prompts, history)
+        if not prompts and batch_size > 0:
+            return {"prompts": [], "stalled": state.get("stalled", 0) + 1}
+        return {"prompts": prompts, "stalled": 0}
 
     def _generate(self, state: OrchestratorState) -> dict:
         if state.get("error"):
@@ -289,6 +306,9 @@ class Orchestrator:
     def _adapt(self, state: OrchestratorState) -> dict:
         if state.get("error") or state.get("status") == "stopped":
             return {"continue_loop": False}
+        if state.get("stalled", 0) >= 2:
+            # le LLM ne produit plus que des doublons : on arrête proprement
+            return {"continue_loop": False, "status": "done"}
 
         for duration in state.get("batch_durations", []):
             self.db.update_calibration(state["workflow"], duration)

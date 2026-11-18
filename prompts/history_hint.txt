@@ -1,0 +1,2 @@
+Prompts déjà générés dans ce job — ne les répète pas, produis des variantes réellement différentes :
+$prompts
