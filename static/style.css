@@ -129,6 +129,20 @@ button.danger { background: #d9534f; color: #fff; }
 .thumbs figcaption { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-word; }
 .thumbs img { cursor: zoom-in; }
 
+.detail-tabs { display: flex; gap: 8px; margin: 14px 0 0; border-bottom: 1px solid var(--border); }
+.tab-btn {
+  background: transparent; color: var(--muted); border: none;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-panel { margin-top: 12px; }
+.params-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.params-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 14px 6px 0; vertical-align: top; white-space: nowrap; width: 200px; }
+.params-table td { padding: 6px 0; color: var(--text); word-break: break-word; }
+.params-table tr { border-bottom: 1px solid var(--border); }
+.params-table tr:last-child { border-bottom: none; }
+
 .lightbox {
   position: fixed; inset: 0;
   background: rgba(0, 0, 0, 0.92);

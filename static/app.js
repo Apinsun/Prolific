@@ -5,6 +5,7 @@ const $ = (sel) => document.querySelector(sel);
 let currentJobId = null;
 let pollTimer = null;
 let lastDetailKey = null;
+let detailTab = 'images';
 
 async function api(path, opts) {
   const res = await fetch('/api' + path, opts);
@@ -80,6 +81,40 @@ async function loadJobs() {
     li.addEventListener('click', () => loadJobDetail(parseInt(li.dataset.id, 10), { force: true })));
 }
 
+function renderJobParams(job) {
+  const fmt = (v) => (v == null || v === '' ? '—' : escapeHtml(String(v)));
+  const yn = (v) => (v ? 'oui' : 'non');
+  const d = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+  const objective = job.objective
+    ? (job.objective.type === 'count' ? `${job.objective.n} prompts` : `${job.objective.minutes} minutes`)
+    : '—';
+  const rows = [
+    ['Objectif', objective],
+    ['Thème', escapeHtml(job.theme ?? '')],
+    ['Workflow', escapeHtml(job.workflow ?? '')],
+    ['Modèle (LLM)', fmt(job.model)],
+    ['Style', fmt(job.style)],
+    ['Orientation', fmt(job.orientation)],
+    ['Datasets', (job.datasets || []).length ? escapeHtml(job.datasets.join(', ')) : '—'],
+    ['Swap VRAM', yn(job.swap_vram)],
+    ['Batch (images par prompt)', fmt(job.batch)],
+    ['Taille du lot de rédaction', job.draft_batch_size != null ? job.draft_batch_size : 'tout en un appel'],
+    ['Longueur min', fmt(job.min_words)],
+    ['Mots aléatoires (RAG)', yn(job.random_tags)],
+    ['Suffixe positif', fmt(job.positive_suffix)],
+    ['Négatif', fmt(job.negative)],
+    ['Température', job.temperature != null ? job.temperature : 'défaut du modèle'],
+    ['Seed', fmt(job.seed)],
+    ['Sous-dossier de sortie', fmt(job.filename_prefix)],
+    ['Traces', yn(job.enable_traces)],
+    ['Statut', escapeHtml(job.status ?? '')],
+    ['Créé le', d(job.created_at)],
+    ['Démarré le', d(job.started_at)],
+    ['Terminé le', d(job.finished_at)],
+  ];
+  return `<table class="params-table">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>`;
+}
+
 async function loadJobDetail(id, { force = false } = {}) {
   currentJobId = id;
   const job = await api('/jobs/' + id);
@@ -90,6 +125,8 @@ async function loadJobDetail(id, { force = false } = {}) {
   lastDetailKey = key;
   const done = (job.images || []).filter((i) => i.status === 'done');
   const running = ['running', 'pending'].includes(job.status);
+  const jobChanged = $('#job-detail').dataset.jobId != id;
+  if (jobChanged || force) detailTab = 'images';
   $('#job-detail').dataset.jobId = id;
   $('#job-detail').innerHTML = `
     <h3>Job #${job.id} <span class="badge ${job.status}">${job.status}</span></h3>
@@ -99,8 +136,17 @@ async function loadJobDetail(id, { force = false } = {}) {
     <button id="untrace-btn" type="button" class="ghost">Retirer des traces</button>
     <button id="delete-btn" type="button" class="danger">Supprimer le job (garde les traces)</button>
     <button id="purge-btn" type="button" class="danger">Supprimer job + traces</button>
-    <div class="thumbs">
-      ${done.map((i) => `<figure><img src="${i.url}" loading="lazy" alt=""><figcaption>${escapeHtml(i.positive)}</figcaption></figure>`).join('') || '<p class="meta">Aucune image générée pour l\'instant.</p>'}
+    <div class="detail-tabs">
+      <button type="button" class="tab-btn ${detailTab === 'images' ? 'active' : ''}" data-tab="images">Images (${done.length})</button>
+      <button type="button" class="tab-btn ${detailTab === 'params' ? 'active' : ''}" data-tab="params">Paramètres</button>
+    </div>
+    <div class="tab-panel" id="panel-images" ${detailTab !== 'images' ? 'hidden' : ''}>
+      <div class="thumbs">
+        ${done.map((i) => `<figure><img src="${i.url}" loading="lazy" alt=""><figcaption>${escapeHtml(i.positive)}</figcaption></figure>`).join('') || '<p class="meta">Aucune image générée pour l\'instant.</p>'}
+      </div>
+    </div>
+    <div class="tab-panel" id="panel-params" ${detailTab !== 'params' ? 'hidden' : ''}>
+      ${renderJobParams(job)}
     </div>
   `;
   const stop = $('#stop-btn');
@@ -129,6 +175,17 @@ async function loadJobDetail(id, { force = false } = {}) {
     currentJobId = null;
     $('#job-detail').innerHTML = '<p class="meta">Sélectionne un job pour voir ses images.</p>';
     loadJobs();
+  });
+  document.querySelectorAll('#job-detail .tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      detailTab = btn.dataset.tab;
+      document.querySelectorAll('#job-detail .tab-btn').forEach((b) =>
+        b.classList.toggle('active', b.dataset.tab === detailTab));
+      const pi = $('#panel-images');
+      const pp = $('#panel-params');
+      if (pi) pi.hidden = detailTab !== 'images';
+      if (pp) pp.hidden = detailTab !== 'params';
+    });
   });
   attachLightbox();
 }

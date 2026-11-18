@@ -578,6 +578,10 @@ class Orchestrator:
             batch=batch,
             min_words=min_words,
             random_tags=random_tags,
+            model=model or self.config.llm.model,
+            filename_prefix=filename_prefix,
+            draft_batch_size=draft_batch_size,
+            enable_traces=enable_traces,
             images_target=images_target,
         )
         self.db.update_job(job_id, status="running", started_at=_now())

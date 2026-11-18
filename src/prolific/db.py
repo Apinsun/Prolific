@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     batch             INTEGER NOT NULL DEFAULT 1,
     min_words         INTEGER NOT NULL DEFAULT 0,
     random_tags       INTEGER NOT NULL DEFAULT 0,
+    model             TEXT,
+    filename_prefix   TEXT,
+    draft_batch_size  INTEGER,
+    enable_traces     INTEGER NOT NULL DEFAULT 1,
     images_target     INTEGER,
     images_done   INTEGER NOT NULL DEFAULT 0,
     error         TEXT,
@@ -86,6 +90,10 @@ _COLUMN_MIGRATIONS = [
     ("jobs", "batch", "INTEGER NOT NULL DEFAULT 1"),
     ("jobs", "min_words", "INTEGER NOT NULL DEFAULT 0"),
     ("jobs", "random_tags", "INTEGER NOT NULL DEFAULT 0"),
+    ("jobs", "model", "TEXT"),
+    ("jobs", "filename_prefix", "TEXT"),
+    ("jobs", "draft_batch_size", "INTEGER"),
+    ("jobs", "enable_traces", "INTEGER NOT NULL DEFAULT 1"),
 ]
 
 
@@ -162,6 +170,10 @@ class Database:
         batch: int = 1,
         min_words: int = 0,
         random_tags: bool = False,
+        model: str | None = None,
+        filename_prefix: str | None = None,
+        draft_batch_size: int | None = None,
+        enable_traces: bool = True,
         images_target: int | None = None,
     ) -> int:
         now = _now()
@@ -169,8 +181,9 @@ class Database:
             """INSERT INTO jobs
                (objective, theme, workflow, style, orientation, datasets,
                 swap_vram, seed, positive_suffix, negative, temperature, batch, min_words,
-                random_tags, images_target, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                random_tags, model, filename_prefix, draft_batch_size, enable_traces,
+                images_target, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
                 theme,
@@ -186,6 +199,10 @@ class Database:
                 batch,
                 min_words,
                 int(random_tags),
+                model,
+                filename_prefix,
+                draft_batch_size,
+                int(enable_traces),
                 images_target,
                 now,
                 now,
