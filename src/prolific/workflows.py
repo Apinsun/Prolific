@@ -60,6 +60,7 @@ def patch_workflow(
     width: int | None = None,
     height: int | None = None,
     filename_prefix: str | None = None,
+    batch_size: int | None = None,
 ) -> dict[str, Any]:
     """Charge un workflow et y injecte prompt/dimensions/seeds via les slots déclarés.
 
@@ -110,5 +111,12 @@ def patch_workflow(
         for node in wf.values():
             if node.get("class_type") == "SaveImage" and "inputs" in node:
                 node["inputs"]["filename_prefix"] = f"{directory}/{base}"
+
+    # Vrai batching : le nœud EmptyLatentImage porte le nombre d'images
+    # générées en parallèle dans un même passage ComfyUI.
+    if batch_size is not None:
+        for node in wf.values():
+            if node.get("class_type") == "EmptyLatentImage" and "inputs" in node:
+                node["inputs"]["batch_size"] = int(batch_size)
 
     return wf

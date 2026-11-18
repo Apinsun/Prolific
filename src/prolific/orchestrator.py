@@ -318,11 +318,8 @@ class Orchestrator:
         )
 
         durations: list[float] = []
-        stop_batch = False
         try:
             for idx, prompt in enumerate(prompts):
-                if stop_batch:
-                    break
                 prompt_orientation = orientations[idx] if idx < len(orientations) else None
                 if state.get("orientation") == "auto":
                     valid = list_orientations(self.manifest, state["workflow"])
@@ -340,108 +337,131 @@ class Orchestrator:
                 )
                 negative = state.get("negative")
 
-                for i in range(images_per_prompt):
-                    if self._stop_events.get(job_id, threading.Event()).is_set():
-                        return {
-                            "status": "stopped",
-                            "continue_loop": False,
-                            "prompts": [],
-                            "generated": generated,
-                            "batch_durations": durations,
-                        }
-                    if deadline is not None and time.monotonic() >= deadline:
-                        stop_batch = True
-                        break
-                    if target is not None and generated >= target:
-                        stop_batch = True
-                        break
+                if self._stop_events.get(job_id, threading.Event()).is_set():
+                    return {
+                        "status": "stopped",
+                        "continue_loop": False,
+                        "prompts": [],
+                        "generated": generated,
+                        "batch_durations": durations,
+                    }
+                if deadline is not None and time.monotonic() >= deadline:
+                    break
+                if target is not None and generated >= target:
+                    break
 
-                    # seed différent par image du batch (reproductible si seed fourni)
-                    if state.get("seed") is not None:
-                        img_seed = state["seed"] + i
-                    else:
-                        img_seed = random.randint(0, 2**63 - 1)
+                # seed unique pour le lot (vrai batching : un envoi = N images)
+                if state.get("seed") is not None:
+                    base_seed = state["seed"]
+                else:
+                    base_seed = random.randint(0, 2**63 - 1)
 
-                    wf = patch_workflow(
-                        self.manifest,
-                        self.workflows_dir,
-                        state["workflow"],
-                        positive=positive,
-                        negative=negative,
-                        orientation=state.get("orientation", "carre"),
-                        seed=img_seed,
-                        width=width,
-                        height=height,
-                        filename_prefix=state.get("filename_prefix"),
-                    )
-                    image_id = self.db.add_image(
+                wf = patch_workflow(
+                    self.manifest,
+                    self.workflows_dir,
+                    state["workflow"],
+                    positive=positive,
+                    negative=negative,
+                    orientation=state.get("orientation", "carre"),
+                    seed=base_seed,
+                    width=width,
+                    height=height,
+                    filename_prefix=state.get("filename_prefix"),
+                    batch_size=images_per_prompt,
+                )
+                image_ids = [
+                    self.db.add_image(
                         job_id,
                         positive=positive,
                         negative=negative,
-                        seed=img_seed,
+                        seed=base_seed,
                         width=width,
                         height=height,
                     )
+                    for _ in range(images_per_prompt)
+                ]
 
-                    try:
-                        prompt_id = self.comfyui.submit(wf)
-                    except Exception as exc:  # noqa: BLE001
-                        self.db.update_image(image_id, status="failed", error=str(exc))
-                        return {
-                            "error": f"ComfyUI injoignable : {exc}",
-                            "status": "failed",
-                            "continue_loop": False,
-                            "generated": generated,
-                            "prompts": [],
-                            "batch_durations": durations,
-                        }
+                try:
+                    prompt_id = self.comfyui.submit(wf)
+                except Exception as exc:  # noqa: BLE001
+                    for iid in image_ids:
+                        self.db.update_image(iid, status="failed", error=str(exc))
+                    return {
+                        "error": f"ComfyUI injoignable : {exc}",
+                        "status": "failed",
+                        "continue_loop": False,
+                        "generated": generated,
+                        "prompts": [],
+                        "batch_durations": durations,
+                    }
 
-                    t0 = time.monotonic()
-                    try:
-                        history = self.comfyui.wait_for(
-                            prompt_id, timeout=self.config.comfyui.timeout
-                        )
-                        images = self.comfyui.extract_images(history)
-                        # préférer les images réellement sauvegardées (SaveImage),
-                        # ignorer les aperçus (PreviewImage, type "temp")
-                        saved = [i for i in images if i.get("type") == "output"] or images
-                        duration = time.monotonic() - t0
-                        if saved:
-                            sub = saved[0].get("subfolder", "")
-                            fn = saved[0].get("filename", "")
-                            path = f"{sub}/{fn}" if sub else fn
-                        else:
-                            path = None
+                t0 = time.monotonic()
+                try:
+                    history = self.comfyui.wait_for(
+                        prompt_id, timeout=self.config.comfyui.timeout
+                    )
+                    images = self.comfyui.extract_images(history)
+                    # préférer les images réellement sauvegardées (SaveImage),
+                    # ignorer les aperçus (PreviewImage, type "temp")
+                    saved = [i for i in images if i.get("type") == "output"] or images
+                    duration = time.monotonic() - t0
+                    per_image = duration / len(saved) if saved else duration
+
+                    for j, s in enumerate(saved[: len(image_ids)]):
+                        sub = s.get("subfolder", "")
+                        fn = s.get("filename", "")
+                        path = f"{sub}/{fn}" if sub else fn
+                        iid = image_ids[j]
                         self.db.update_image(
-                            image_id, status="done", path=path, duration_seconds=duration
+                            iid, status="done", path=path, duration_seconds=per_image
                         )
-                        durations.append(duration)
+                        durations.append(per_image)
                         generated += 1
                         self.db.update_job(job_id, images_done=generated)
-                        logger.info("job %s — image %s ok (%.1fs)", job_id, image_id, duration)
+                        logger.info("job %s — image %s ok (%.1fs)", job_id, iid, per_image)
                         if self.trace_logger is not None:
                             self.trace_logger.log_image(
                                 job_id=job_id,
-                                image_id=image_id,
+                                image_id=iid,
                                 positive=positive,
                                 negative=negative,
-                                seed=img_seed,
+                                seed=base_seed,
                                 width=width,
                                 height=height,
                                 status="done",
                                 path=path,
-                                duration=duration,
+                                duration=per_image,
                             )
-                    except Exception as exc:  # noqa: BLE001
-                        self.db.update_image(image_id, status="failed", error=str(exc))
-                        logger.warning("job %s — image %s échouée : %s", job_id, image_id, exc)
+
+                    # images attendues mais absentes du résultat
+                    for j in range(len(saved), len(image_ids)):
+                        iid = image_ids[j]
+                        msg = "image absente du résultat ComfyUI"
+                        self.db.update_image(iid, status="failed", error=msg)
                         if self.trace_logger is not None:
                             self.trace_logger.log_image(
                                 job_id=job_id,
-                                image_id=image_id,
+                                image_id=iid,
                                 positive=positive,
                                 negative=negative,
-                                seed=img_seed,
+                                seed=base_seed,
+                                width=width,
+                                height=height,
+                                status="failed",
+                                error=msg,
+                            )
+                except Exception as exc:  # noqa: BLE001
+                    for iid in image_ids:
+                        self.db.update_image(iid, status="failed", error=str(exc))
+                    logger.warning("job %s — lot échoué : %s", job_id, exc)
+                    if self.trace_logger is not None:
+                        for iid in image_ids:
+                            self.trace_logger.log_image(
+                                job_id=job_id,
+                                image_id=iid,
+                                positive=positive,
+                                negative=negative,
+                                seed=base_seed,
                                 width=width,
                                 height=height,
                                 status="failed",
