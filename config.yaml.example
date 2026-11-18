@@ -4,7 +4,6 @@ llm:
   provider: ollama            # MVP : uniquement ollama
   base_url: http://localhost:11434
   model: ""                   # défaut, surchargé par job / dropdown
-  temperature: 0.8            # créativité (Ollama : 0.0 - 2.0)
 
 comfyui:
   url: http://127.0.0.1:8188

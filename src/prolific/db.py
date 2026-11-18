@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     positive_suffix   TEXT,
     negative          TEXT,
     temperature       REAL,
+    batch             INTEGER NOT NULL DEFAULT 1,
     images_target     INTEGER,
     images_done   INTEGER NOT NULL DEFAULT 0,
     error         TEXT,
@@ -80,6 +81,7 @@ _COLUMN_MIGRATIONS = [
     ("jobs", "positive_suffix", "TEXT"),
     ("jobs", "negative", "TEXT"),
     ("jobs", "temperature", "REAL"),
+    ("jobs", "batch", "INTEGER NOT NULL DEFAULT 1"),
 ]
 
 
@@ -153,15 +155,16 @@ class Database:
         positive_suffix: str | None = None,
         negative: str | None = None,
         temperature: float | None = None,
+        batch: int = 1,
         images_target: int | None = None,
     ) -> int:
         now = _now()
         return self._write(
             """INSERT INTO jobs
                (objective, theme, workflow, style, orientation, datasets,
-                swap_vram, seed, positive_suffix, negative, temperature, images_target,
+                swap_vram, seed, positive_suffix, negative, temperature, batch, images_target,
                 created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
                 theme,
@@ -174,6 +177,7 @@ class Database:
                 positive_suffix,
                 negative,
                 temperature,
+                batch,
                 images_target,
                 now,
                 now,

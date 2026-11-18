@@ -31,7 +31,6 @@ async function loadConfig() {
   $('#datasets').innerHTML = cfg.datasets.length
     ? cfg.datasets.map((d) => `<label class="check"><input type="checkbox" name="dataset" value="${d}"> ${escapeHtml(d)}</label>`).join('')
     : '<em>Aucun dataset indexé.</em>';
-  if (cfg.default_temperature != null) $('#temperature').value = cfg.default_temperature;
 }
 
 function formToPayload() {
@@ -51,6 +50,7 @@ function formToPayload() {
     positive_suffix: $('#positive_suffix').value.trim() || null,
     negative: $('#negative').value.trim() || null,
     temperature: $('#temperature').value ? parseFloat($('#temperature').value) : null,
+    batch: parseInt($('#batch').value, 10) || 1,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
   };
 }
@@ -143,6 +143,18 @@ document.querySelectorAll('input[name="objective_type"]').forEach((r) =>
   }));
 
 $('#refresh-btn').addEventListener('click', () => { loadJobs(); if (currentJobId != null) loadJobDetail(currentJobId); });
+
+$('#model').addEventListener('change', updateTemperatureHint);
+
+async function updateTemperatureHint() {
+  const model = $('#model').value;
+  const hint = $('#temperature-hint');
+  if (!model) { hint.textContent = ''; return; }
+  try {
+    const r = await api('/model_temperature?model=' + encodeURIComponent(model));
+    hint.textContent = r.temperature != null ? `(modèle : ${r.temperature})` : '(modèle : défaut 0.8)';
+  } catch (e) { hint.textContent = ''; }
+}
 
 /* — init — */
 (async () => {

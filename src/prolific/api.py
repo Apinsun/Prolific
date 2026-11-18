@@ -31,6 +31,7 @@ class JobCreate(BaseModel):
     positive_suffix: str | None = None
     negative: str | None = None
     temperature: float | None = None
+    batch: int = 1
     seed: int | None = None
 
 
@@ -89,8 +90,12 @@ def build_api(
             "datasets": rag.list_datasets(),
             "styles": STYLES,
             "orientations": ORIENTATIONS,
-            "default_temperature": config.llm.temperature,
         }
+
+    @router.get("/model_temperature")
+    def model_temperature(model: str) -> dict[str, float | None]:
+        """Température déclarée par un modèle Ollama (None = défaut du modèle)."""
+        return {"temperature": ollama.model_temperature(model)}
 
     @router.post("/jobs")
     def create_job(payload: JobCreate) -> dict[str, int]:
@@ -120,6 +125,7 @@ def build_api(
             positive_suffix=payload.positive_suffix,
             negative=payload.negative,
             temperature=payload.temperature,
+            batch=payload.batch,
         )
         return {"job_id": job_id}
 

@@ -18,6 +18,24 @@ class OllamaClient:
             resp.raise_for_status()
             return resp.json().get("models", [])
 
+    def model_temperature(self, model: str) -> float | None:
+        """Lit la température déclarée par le modèle (Modelfile), ou None si absente."""
+        try:
+            with httpx.Client(timeout=15) as client:
+                resp = client.post(f"{self.base_url}/api/show", json={"model": model})
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPError:
+            return None
+        for line in (data.get("parameters", "") or "").splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[0].lower() == "temperature":
+                try:
+                    return float(parts[1])
+                except ValueError:
+                    return None
+        return None
+
     def generate(
         self,
         model: str,

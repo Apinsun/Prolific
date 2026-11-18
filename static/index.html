@@ -31,15 +31,19 @@
 
         <fieldset>
           <legend>Objectif</legend>
-          <label class="inline"><input type="radio" name="objective_type" value="count" checked> Nombre d'images</label>
+          <label class="inline"><input type="radio" name="objective_type" value="count" checked> Nombre de prompts</label>
           <label class="inline"><input type="radio" name="objective_type" value="duration"> Durée (minutes)</label>
           <div class="objective-input">
-            <label>Nombre d'images <input type="number" id="n" min="1" value="10"></label>
+            <label>Nombre de prompts <input type="number" id="n" min="1" value="10"></label>
           </div>
           <div class="objective-input" id="duration-wrap" hidden>
             <label>Durée (minutes) <input type="number" id="minutes" min="1" value="20"></label>
           </div>
         </fieldset>
+
+        <label>Images par prompt (batch)
+          <input type="number" id="batch" min="1" value="1" title="Chaque prompt est généré ce nombre de fois, avec des seeds différents">
+        </label>
 
         <div class="grid-2">
           <label>Dimensions
@@ -73,7 +77,7 @@
         <label class="inline"><input type="checkbox" id="swap_vram"> Swap VRAM (LLM ↔ modèle d'image)</label>
         <div class="grid-2">
           <label>Seed (optionnel) <input type="number" id="seed" placeholder="aléatoire"></label>
-          <label>Température <input type="number" id="temperature" min="0" max="2" step="0.1" value="0.8"></label>
+          <label>Température <input type="number" id="temperature" min="0" max="2" step="0.1" placeholder="auto (défaut du modèle)"><span id="temperature-hint" class="hint"></span></label>
         </div>
 
         <button type="submit" id="submit-btn">Lancer</button>

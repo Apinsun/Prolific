@@ -16,6 +16,8 @@ Le graphe est synchrone et tourne dans un thread en arrière-plan.
 from __future__ import annotations
 
 import logging
+import math
+import random
 import sqlite3
 import threading
 import time
@@ -55,6 +57,7 @@ class OrchestratorState(TypedDict, total=False):
     positive_suffix: str | None
     negative: str | None
     temperature: float | None
+    batch: int
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -144,10 +147,12 @@ class Orchestrator:
         objective = state["objective"]
         now = time.monotonic()
 
+        images_per_prompt = max(1, int(state.get("batch", 1)))
+
         if objective.get("type") == "count":
             n = int(objective["n"])
             return {
-                "target": n,
+                "target": n * images_per_prompt,
                 "batch_size": n,
                 "deadline": None,
                 "started_at": now,
@@ -159,7 +164,8 @@ class Orchestrator:
         budget = max(0.0, minutes * 60 - self.DURATION_MARGIN)
         cal = self.db.get_calibration(state["workflow"])
         if cal and cal["avg_seconds"] > 0:
-            batch = max(1, int(budget / cal["avg_seconds"]))
+            per_prompt = cal["avg_seconds"] * images_per_prompt
+            batch = max(1, int(budget / per_prompt))
         else:
             batch = self.PROBE_BATCH
         return {
@@ -191,9 +197,7 @@ class Orchestrator:
         datasets = state.get("datasets", [])
         tools = [make_search_terms_tool(self.rag, datasets)] if datasets else []
         model = state.get("model") or self.config.llm.model
-        temperature = state.get("temperature")
-        if temperature is None:
-            temperature = self.config.llm.temperature
+        temperature = state.get("temperature")  # None = défaut du modèle Ollama
         llm = self._llm_factory(model, temperature)
         logger.info(
             "job %s — rédaction de %d prompts (style=%s datasets=%s temperature=%s)",
@@ -223,6 +227,8 @@ class Orchestrator:
         logger.info(
             "job %s — %d prompts retenus après dédoublonnage", state["job_id"], len(prompts)
         )
+        for i, p in enumerate(prompts, 1):
+            logger.info("job %s — prompt %d : %s", state["job_id"], i, p)
         if not prompts and batch_size > 0:
             return {"prompts": [], "stalled": state.get("stalled", 0) + 1}
         return {"prompts": prompts, "stalled": 0}
@@ -238,28 +244,22 @@ class Orchestrator:
         generated = state.get("generated", 0)
         target = state.get("target")
         deadline = state.get("deadline")
+        images_per_prompt = max(1, int(state.get("batch", 1)))
 
         # 1 cycle VRAM pour tout le lot : on décharge le LLM avant de générer
         if swap and model:
             self.ollama.unload(model)
-        logger.info("job %s — génération de %d images (swap=%s)", job_id, len(prompts), swap)
+        logger.info(
+            "job %s — génération de %d prompts × %d image(s) (swap=%s)",
+            job_id, len(prompts), images_per_prompt, swap,
+        )
 
         durations: list[float] = []
+        stop_batch = False
         try:
             for prompt in prompts:
-                if self._stop_events.get(job_id, threading.Event()).is_set():
-                    return {
-                        "status": "stopped",
-                        "continue_loop": False,
-                        "prompts": [],
-                        "generated": generated,
-                        "batch_durations": durations,
-                    }
-                if deadline is not None and time.monotonic() >= deadline:
+                if stop_batch:
                     break
-                if target is not None and generated >= target:
-                    break
-
                 width, height = resolve_format(
                     self.manifest, state["workflow"], state.get("orientation", "carre")
                 )
@@ -267,64 +267,87 @@ class Orchestrator:
                     prompt, state.get("positive_suffix"), state.get("style", "tags")
                 )
                 negative = state.get("negative")
-                wf = patch_workflow(
-                    self.manifest,
-                    self.workflows_dir,
-                    state["workflow"],
-                    positive=positive,
-                    negative=negative,
-                    orientation=state.get("orientation", "carre"),
-                    seed=state.get("seed"),
-                    width=width,
-                    height=height,
-                )
-                image_id = self.db.add_image(
-                    job_id,
-                    positive=positive,
-                    negative=negative,
-                    seed=state.get("seed"),
-                    width=width,
-                    height=height,
-                )
 
-                try:
-                    prompt_id = self.comfyui.submit(wf)
-                except Exception as exc:  # noqa: BLE001
-                    self.db.update_image(image_id, status="failed", error=str(exc))
-                    return {
-                        "error": f"ComfyUI injoignable : {exc}",
-                        "status": "failed",
-                        "continue_loop": False,
-                        "generated": generated,
-                        "prompts": [],
-                        "batch_durations": durations,
-                    }
+                for i in range(images_per_prompt):
+                    if self._stop_events.get(job_id, threading.Event()).is_set():
+                        return {
+                            "status": "stopped",
+                            "continue_loop": False,
+                            "prompts": [],
+                            "generated": generated,
+                            "batch_durations": durations,
+                        }
+                    if deadline is not None and time.monotonic() >= deadline:
+                        stop_batch = True
+                        break
+                    if target is not None and generated >= target:
+                        stop_batch = True
+                        break
 
-                t0 = time.monotonic()
-                try:
-                    history = self.comfyui.wait_for(
-                        prompt_id, timeout=self.config.comfyui.timeout
+                    # seed différent par image du batch (reproductible si seed fourni)
+                    if state.get("seed") is not None:
+                        img_seed = state["seed"] + i
+                    else:
+                        img_seed = random.randint(0, 2**63 - 1)
+
+                    wf = patch_workflow(
+                        self.manifest,
+                        self.workflows_dir,
+                        state["workflow"],
+                        positive=positive,
+                        negative=negative,
+                        orientation=state.get("orientation", "carre"),
+                        seed=img_seed,
+                        width=width,
+                        height=height,
                     )
-                    images = self.comfyui.extract_images(history)
-                    # préférer les images réellement sauvegardées (SaveImage),
-                    # ignorer les aperçus (PreviewImage, type "temp")
-                    saved = [i for i in images if i.get("type") == "output"] or images
-                    duration = time.monotonic() - t0
-                    path = (
-                        f"{saved[0].get('subfolder', '')}/{saved[0].get('filename', '')}"
-                        if saved
-                        else None
+                    image_id = self.db.add_image(
+                        job_id,
+                        positive=positive,
+                        negative=negative,
+                        seed=img_seed,
+                        width=width,
+                        height=height,
                     )
-                    self.db.update_image(
-                        image_id, status="done", path=path, duration_seconds=duration
-                    )
-                    durations.append(duration)
-                    generated += 1
-                    self.db.update_job(job_id, images_done=generated)
-                    logger.info("job %s — image %s ok (%.1fs)", job_id, image_id, duration)
-                except Exception as exc:  # noqa: BLE001
-                    self.db.update_image(image_id, status="failed", error=str(exc))
-                    logger.warning("job %s — image %s échouée : %s", job_id, image_id, exc)
+
+                    try:
+                        prompt_id = self.comfyui.submit(wf)
+                    except Exception as exc:  # noqa: BLE001
+                        self.db.update_image(image_id, status="failed", error=str(exc))
+                        return {
+                            "error": f"ComfyUI injoignable : {exc}",
+                            "status": "failed",
+                            "continue_loop": False,
+                            "generated": generated,
+                            "prompts": [],
+                            "batch_durations": durations,
+                        }
+
+                    t0 = time.monotonic()
+                    try:
+                        history = self.comfyui.wait_for(
+                            prompt_id, timeout=self.config.comfyui.timeout
+                        )
+                        images = self.comfyui.extract_images(history)
+                        # préférer les images réellement sauvegardées (SaveImage),
+                        # ignorer les aperçus (PreviewImage, type "temp")
+                        saved = [i for i in images if i.get("type") == "output"] or images
+                        duration = time.monotonic() - t0
+                        path = (
+                            f"{saved[0].get('subfolder', '')}/{saved[0].get('filename', '')}"
+                            if saved
+                            else None
+                        )
+                        self.db.update_image(
+                            image_id, status="done", path=path, duration_seconds=duration
+                        )
+                        durations.append(duration)
+                        generated += 1
+                        self.db.update_job(job_id, images_done=generated)
+                        logger.info("job %s — image %s ok (%.1fs)", job_id, image_id, duration)
+                    except Exception as exc:  # noqa: BLE001
+                        self.db.update_image(image_id, status="failed", error=str(exc))
+                        logger.warning("job %s — image %s échouée : %s", job_id, image_id, exc)
         finally:
             if swap:
                 self.comfyui.free_vram()
@@ -348,12 +371,14 @@ class Orchestrator:
 
         generated = state.get("generated", 0)
         objective = state.get("objective", {})
+        images_per_prompt = max(1, int(state.get("batch", 1)))
 
         if objective.get("type") == "count":
-            target = int(objective.get("n", 0))
+            target = state.get("target") or 0
             remaining = max(0, target - generated)
             if remaining > 0:
-                return {"batch_size": remaining, "continue_loop": True}
+                prompts_to_draft = math.ceil(remaining / images_per_prompt)
+                return {"batch_size": prompts_to_draft, "continue_loop": True}
             return {"continue_loop": False, "status": "done"}
 
         deadline = state.get("deadline")
@@ -363,7 +388,8 @@ class Orchestrator:
         remaining = deadline - time.monotonic()
         cal = self.db.get_calibration(state["workflow"])
         if cal and cal["avg_seconds"] > 0:
-            batch = max(1, int(remaining / cal["avg_seconds"]))
+            per_prompt = cal["avg_seconds"] * images_per_prompt
+            batch = max(1, int(remaining / per_prompt))
         else:
             batch = self.PROBE_BATCH
         return {"batch_size": batch, "continue_loop": True}
@@ -397,13 +423,16 @@ class Orchestrator:
         positive_suffix: str | None = None,
         negative: str | None = None,
         temperature: float | None = None,
+        batch: int = 1,
     ) -> int:
         """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
         if style is None:
             style = entry.get("style", "tags")
 
-        images_target = int(objective["n"]) if objective.get("type") == "count" else None
+        images_target = (
+            int(objective["n"]) * batch if objective.get("type") == "count" else None
+        )
         job_id = self.db.create_job(
             objective=objective,
             theme=theme,
@@ -416,6 +445,7 @@ class Orchestrator:
             positive_suffix=positive_suffix,
             negative=negative,
             temperature=temperature,
+            batch=batch,
             images_target=images_target,
         )
         self.db.update_job(job_id, status="running", started_at=_now())
@@ -438,6 +468,7 @@ class Orchestrator:
             "positive_suffix": positive_suffix,
             "negative": negative,
             "temperature": temperature,
+            "batch": batch,
         }
 
         self._stop_events[job_id] = threading.Event()
