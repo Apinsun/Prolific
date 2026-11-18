@@ -4,6 +4,7 @@ const $ = (sel) => document.querySelector(sel);
 
 let currentJobId = null;
 let pollTimer = null;
+let lastDetailKey = null;
 
 async function api(path, opts) {
   const res = await fetch('/api' + path, opts);
@@ -76,14 +77,20 @@ async function loadJobs() {
     </li>
   `).join('');
   document.querySelectorAll('#job-list li').forEach((li) =>
-    li.addEventListener('click', () => loadJobDetail(parseInt(li.dataset.id, 10))));
+    li.addEventListener('click', () => loadJobDetail(parseInt(li.dataset.id, 10), { force: true })));
 }
 
-async function loadJobDetail(id) {
+async function loadJobDetail(id, { force = false } = {}) {
   currentJobId = id;
   const job = await api('/jobs/' + id);
+  const key = `${job.status}:${job.images_done ?? ''}:${job.images_target ?? ''}`;
+  if (!force && key === lastDetailKey && $('#job-detail').dataset.jobId == id) {
+    return; // rien de nouveau : évite le clignotement des vignettes
+  }
+  lastDetailKey = key;
   const done = (job.images || []).filter((i) => i.status === 'done');
   const running = ['running', 'pending'].includes(job.status);
+  $('#job-detail').dataset.jobId = id;
   $('#job-detail').innerHTML = `
     <h3>Job #${job.id} <span class="badge ${job.status}">${job.status}</span></h3>
     <p class="meta">workflow : ${escapeHtml(job.workflow)} · style : ${escapeHtml(job.style ?? '—')} · ${job.images_done}/${job.images_target ?? '—'} images</p>
@@ -99,13 +106,13 @@ async function loadJobDetail(id) {
   const stop = $('#stop-btn');
   if (stop) stop.addEventListener('click', async () => {
     await api('/jobs/' + id + '/stop', { method: 'POST' });
-    loadJobDetail(id);
+    loadJobDetail(id, { force: true });
   });
   const untrace = $('#untrace-btn');
   if (untrace) untrace.addEventListener('click', async () => {
     if (!confirm('Retirer ce job des traces (dataset de fine-tuning) ? Le job et ses images restent.')) return;
     await api('/jobs/' + id + '/traces', { method: 'DELETE' });
-    loadJobDetail(id);
+    loadJobDetail(id, { force: true });
   });
   const del = $('#delete-btn');
   if (del) del.addEventListener('click', async () => {
@@ -162,7 +169,7 @@ $('#job-form').addEventListener('submit', async (e) => {
     });
     currentJobId = job_id;
     await loadJobs();
-    await loadJobDetail(job_id);
+    await loadJobDetail(job_id, { force: true });
     startPolling();
   } catch (err) {
     alert('Erreur : ' + err.message);
@@ -177,7 +184,7 @@ document.querySelectorAll('input[name="objective_type"]').forEach((r) =>
     $('#duration-wrap').hidden = isCount;
   }));
 
-$('#refresh-btn').addEventListener('click', () => { loadJobs(); if (currentJobId != null) loadJobDetail(currentJobId); });
+$('#refresh-btn').addEventListener('click', () => { loadJobs(); if (currentJobId != null) loadJobDetail(currentJobId, { force: true }); });
 
 $('#model').addEventListener('change', updateTemperatureHint);
 
