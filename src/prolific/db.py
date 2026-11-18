@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     batch             INTEGER NOT NULL DEFAULT 1,
     min_words         INTEGER NOT NULL DEFAULT 0,
     random_tags       INTEGER NOT NULL DEFAULT 0,
+    random_tags_count INTEGER NOT NULL DEFAULT 15,
     model             TEXT,
     filename_prefix   TEXT,
     draft_batch_size  INTEGER,
@@ -90,6 +91,7 @@ _COLUMN_MIGRATIONS = [
     ("jobs", "batch", "INTEGER NOT NULL DEFAULT 1"),
     ("jobs", "min_words", "INTEGER NOT NULL DEFAULT 0"),
     ("jobs", "random_tags", "INTEGER NOT NULL DEFAULT 0"),
+    ("jobs", "random_tags_count", "INTEGER NOT NULL DEFAULT 15"),
     ("jobs", "model", "TEXT"),
     ("jobs", "filename_prefix", "TEXT"),
     ("jobs", "draft_batch_size", "INTEGER"),
@@ -170,6 +172,7 @@ class Database:
         batch: int = 1,
         min_words: int = 0,
         random_tags: bool = False,
+        random_tags_count: int = 15,
         model: str | None = None,
         filename_prefix: str | None = None,
         draft_batch_size: int | None = None,
@@ -181,9 +184,9 @@ class Database:
             """INSERT INTO jobs
                (objective, theme, workflow, style, orientation, datasets,
                 swap_vram, seed, positive_suffix, negative, temperature, batch, min_words,
-                random_tags, model, filename_prefix, draft_batch_size, enable_traces,
-                images_target, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                random_tags, random_tags_count, model, filename_prefix, draft_batch_size,
+                enable_traces, images_target, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
                 theme,
@@ -199,6 +202,7 @@ class Database:
                 batch,
                 min_words,
                 int(random_tags),
+                int(random_tags_count),
                 model,
                 filename_prefix,
                 draft_batch_size,

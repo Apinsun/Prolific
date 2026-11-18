@@ -36,6 +36,7 @@ class JobCreate(BaseModel):
     batch: int = 1
     min_words: int = 0
     random_tags: bool = False
+    random_tags_count: int = 15
     seed: int | None = None
     filename_prefix: str | None = None
     draft_batch_size: int | None = None
@@ -136,6 +137,7 @@ def build_api(
             batch=payload.batch,
             min_words=payload.min_words,
             random_tags=payload.random_tags,
+            random_tags_count=payload.random_tags_count,
             filename_prefix=payload.filename_prefix,
             draft_batch_size=payload.draft_batch_size,
             enable_traces=payload.enable_traces,

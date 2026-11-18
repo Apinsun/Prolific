@@ -109,6 +109,7 @@ def build_mcp(
         batch: int = 1,
         min_words: int = 0,
         random_tags: bool = False,
+        random_tags_count: int = 15,
         positive_suffix: str | None = None,
         negative: str | None = None,
         filename_prefix: str | None = None,
@@ -132,6 +133,7 @@ def build_mcp(
             batch: Nombre d'images par prompt (seeds différents).
             min_words: Longueur minimale d'un prompt (0 = pas de minimum).
             random_tags: Injecter des termes aléatoires du RAG (si datasets sélectionnés).
+            random_tags_count: Nombre de termes aléatoires proposés par prompt.
             positive_suffix: Texte concaténé au prompt positif.
             negative: Prompt négatif (remplace celui du workflow).
             filename_prefix: Sous-dossier de sortie (relatif au output_dir ComfyUI).
@@ -162,6 +164,7 @@ def build_mcp(
             batch=batch,
             min_words=min_words,
             random_tags=random_tags,
+            random_tags_count=random_tags_count,
             positive_suffix=positive_suffix,
             negative=negative,
             filename_prefix=filename_prefix,

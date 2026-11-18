@@ -36,7 +36,13 @@ async function loadConfig() {
   $('#datasets').addEventListener('change', () => {
     const any = document.querySelectorAll('input[name="dataset"]:checked').length > 0;
     $('#random_tags').disabled = !any;
-    if (!any) $('#random_tags').checked = false;
+    if (!any) {
+      $('#random_tags').checked = false;
+      $('#random_tags_count').disabled = true;
+    }
+  });
+  $('#random_tags').addEventListener('change', () => {
+    $('#random_tags_count').disabled = !$('#random_tags').checked;
   });
 }
 
@@ -62,6 +68,7 @@ function formToPayload() {
     batch: parseInt($('#batch').value, 10) || 1,
     min_words: parseInt($('#min_words').value, 10) || 0,
     random_tags: $('#random_tags').checked,
+    random_tags_count: parseInt($('#random_tags_count').value, 10) || 15,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
     enable_traces: $('#enable_traces').checked,
   };
@@ -101,6 +108,7 @@ function renderJobParams(job) {
     ['Taille du lot de rédaction', job.draft_batch_size != null ? job.draft_batch_size : 'tout en un appel'],
     ['Longueur min', fmt(job.min_words)],
     ['Mots aléatoires (RAG)', yn(job.random_tags)],
+    ['Mots aléatoires (nb)', job.random_tags_count != null ? job.random_tags_count : 15],
     ['Suffixe positif', fmt(job.positive_suffix)],
     ['Négatif', fmt(job.negative)],
     ['Température', job.temperature != null ? job.temperature : 'défaut du modèle'],

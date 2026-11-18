@@ -65,6 +65,7 @@ class OrchestratorState(TypedDict, total=False):
     batch: int
     min_words: int
     random_tags: bool
+    random_tags_count: int
     filename_prefix: str | None
     draft_batch_size: int | None
     enable_traces: bool
@@ -223,8 +224,9 @@ class Orchestrator:
             ]
         random_terms: list[list[str]] = []
         if state.get("random_tags") and datasets:
+            k = state.get("random_tags_count") or 15
             random_terms = [
-                self.rag.random_terms(datasets, k=15) for _ in range(batch_size)
+                self.rag.random_terms(datasets, k=k) for _ in range(batch_size)
             ]
         model = state.get("model") or self.config.llm.model
         temperature = state.get("temperature")  # None = défaut du modèle Ollama
@@ -551,6 +553,7 @@ class Orchestrator:
         batch: int = 1,
         min_words: int = 0,
         random_tags: bool = False,
+        random_tags_count: int = 15,
         filename_prefix: str | None = None,
         draft_batch_size: int | None = None,
         enable_traces: bool = True,
@@ -578,6 +581,7 @@ class Orchestrator:
             batch=batch,
             min_words=min_words,
             random_tags=random_tags,
+            random_tags_count=random_tags_count,
             model=model or self.config.llm.model,
             filename_prefix=filename_prefix,
             draft_batch_size=draft_batch_size,
@@ -607,6 +611,7 @@ class Orchestrator:
             "batch": batch,
             "min_words": min_words,
             "random_tags": random_tags,
+            "random_tags_count": random_tags_count,
             "filename_prefix": filename_prefix,
             "draft_batch_size": draft_batch_size,
             "enable_traces": enable_traces,

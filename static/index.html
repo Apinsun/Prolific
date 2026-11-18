@@ -73,6 +73,9 @@
         </label>
 
         <label class="inline"><input type="checkbox" id="random_tags" disabled> Mots aléatoires (RAG)</label>
+        <label>Nombre de mots aléatoires (par prompt)
+          <input type="number" id="random_tags_count" min="1" value="15" disabled title="Combien de termes aléatoires proposer par prompt (le LLM garde ceux qui sont cohérents)">
+        </label>
 
         <label>Suffixe positif (concaténé au prompt)
           <input id="positive_suffix" placeholder="ex : masterpiece, best quality">
