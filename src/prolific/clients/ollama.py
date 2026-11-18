@@ -42,6 +42,16 @@ class OllamaClient:
             resp.raise_for_status()
             return resp.json().get("response", "")
 
+    def embed(self, model: str, texts: list[str], *, timeout: float = 120) -> list[list[float]]:
+        """Embeddings via /api/embed (un vecteur par texte, dans l'ordre)."""
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(
+                f"{self.base_url}/api/embed",
+                json={"model": model, "input": texts},
+            )
+            resp.raise_for_status()
+            return resp.json()["embeddings"]
+
     def unload(self, model: str) -> None:
         """Décharge un modèle de la VRAM (via CLI `ollama stop`, comme le skill comfyui)."""
         subprocess.run(["ollama", "stop", model], capture_output=True, check=False)

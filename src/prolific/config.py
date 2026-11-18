@@ -33,12 +33,18 @@ class DatasetsConfig(BaseModel):
     dir: str = "./datasets"
 
 
+class RagConfig(BaseModel):
+    embed_model: str = "bge-m3"
+    chroma_dir: str = "./chroma_db"
+
+
 class Config(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     comfyui: ComfyUIConfig = Field(default_factory=ComfyUIConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     datasets: DatasetsConfig = Field(default_factory=DatasetsConfig)
+    rag: RagConfig = Field(default_factory=RagConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:
