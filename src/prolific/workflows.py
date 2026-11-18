@@ -24,6 +24,13 @@ def list_workflow_names(manifest: dict[str, Any]) -> list[str]:
     return sorted(manifest.keys())
 
 
+def list_orientations(manifest: dict[str, Any], name: str) -> list[str]:
+    """Retourne les orientations valides d'un workflow (ex. ['carre','paysage','portrait'])."""
+    if name not in manifest:
+        return []
+    return list(manifest[name].get("formats", {}).keys())
+
+
 def resolve_format(manifest: dict[str, Any], name: str, orientation: str) -> tuple[int, int]:
     """Résout une orientation (carre/paysage/portrait/random) en (largeur, hauteur)."""
     if name not in manifest:

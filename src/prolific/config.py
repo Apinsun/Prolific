@@ -44,6 +44,11 @@ class LoggingConfig(BaseModel):
     file: str = ""
 
 
+class TracesConfig(BaseModel):
+    enabled: bool = True
+    dir: str = "traces"
+
+
 class Config(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     comfyui: ComfyUIConfig = Field(default_factory=ComfyUIConfig)
@@ -52,6 +57,7 @@ class Config(BaseModel):
     datasets: DatasetsConfig = Field(default_factory=DatasetsConfig)
     rag: RagConfig = Field(default_factory=RagConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    traces: TracesConfig = Field(default_factory=TracesConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> Config:

@@ -37,7 +37,8 @@ from prolific.db import Database
 from prolific.prompting import PROMPTS_DIR, compose_positive
 from prolific.rag import RagIndex
 from prolific.tools import make_search_terms_tool
-from prolific.workflows import patch_workflow, resolve_format
+from prolific.traces import TraceLogger
+from prolific.workflows import list_orientations, patch_workflow, resolve_format
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ class Orchestrator:
         prompts_dir: Path = PROMPTS_DIR,
         llm_factory: Callable[[str, float], Any] | None = None,
         checkpointer_path: Path = Path("checkpoints.sqlite"),
+        trace_logger: TraceLogger | None = None,
     ) -> None:
         self.config = config
         self.db = db
@@ -107,6 +109,7 @@ class Orchestrator:
         self.workflows_dir = workflows_dir
         self.manifest = manifest
         self.prompts_dir = prompts_dir
+        self.trace_logger = trace_logger
         self._llm_factory = llm_factory or (
             lambda model, temperature: ChatOllama(
                 model=model, base_url=self.config.llm.base_url, temperature=temperature
@@ -242,6 +245,17 @@ class Orchestrator:
         )
         for i, (p, o) in enumerate(zip(prompts, orientations), 1):
             logger.info("job %s — prompt %d [%s] : %s", state["job_id"], i, o or "?", p)
+        if self.trace_logger is not None:
+            self.trace_logger.log_draft(
+                job_id=state["job_id"],
+                theme=state["theme"],
+                style=state.get("style"),
+                datasets=datasets,
+                n=batch_size,
+                temperature=temperature,
+                prompts=prompts,
+                orientations=orientations,
+            )
         if not prompts and batch_size > 0:
             return {
                 "prompts": [],
@@ -280,7 +294,11 @@ class Orchestrator:
                     break
                 prompt_orientation = orientations[idx] if idx < len(orientations) else None
                 if state.get("orientation") == "auto":
-                    orientation = prompt_orientation or "carre"
+                    valid = list_orientations(self.manifest, state["workflow"])
+                    orientation = (
+                        prompt_orientation if prompt_orientation in valid
+                        else (valid[0] if valid else "carre")
+                    )
                 else:
                     orientation = state.get("orientation", "carre")
                 width, height = resolve_format(
@@ -368,9 +386,34 @@ class Orchestrator:
                         generated += 1
                         self.db.update_job(job_id, images_done=generated)
                         logger.info("job %s — image %s ok (%.1fs)", job_id, image_id, duration)
+                        if self.trace_logger is not None:
+                            self.trace_logger.log_image(
+                                job_id=job_id,
+                                image_id=image_id,
+                                positive=positive,
+                                negative=negative,
+                                seed=img_seed,
+                                width=width,
+                                height=height,
+                                status="done",
+                                path=path,
+                                duration=duration,
+                            )
                     except Exception as exc:  # noqa: BLE001
                         self.db.update_image(image_id, status="failed", error=str(exc))
                         logger.warning("job %s — image %s échouée : %s", job_id, image_id, exc)
+                        if self.trace_logger is not None:
+                            self.trace_logger.log_image(
+                                job_id=job_id,
+                                image_id=image_id,
+                                positive=positive,
+                                negative=negative,
+                                seed=img_seed,
+                                width=width,
+                                height=height,
+                                status="failed",
+                                error=str(exc),
+                            )
         finally:
             if swap:
                 self.comfyui.free_vram()

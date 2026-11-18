@@ -26,3 +26,7 @@ rag:
 logging:
   level: INFO                 # DEBUG | INFO | WARNING | ERROR
   file: ""                    # vide = console uniquement ; ex : prolific.log
+
+traces:
+  enabled: true               # capture JSONL pour fine-tuning futur (gitignoré)
+  dir: traces

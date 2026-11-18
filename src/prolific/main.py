@@ -19,6 +19,7 @@ from prolific.logging_setup import setup_logging
 from prolific.mcp_server import build_mcp
 from prolific.orchestrator import Orchestrator
 from prolific.rag import RagIndex
+from prolific.traces import TraceLogger
 from prolific.workflows import load_manifest
 
 WORKFLOWS_DIR = Path("workflows")
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
     comfyui = ComfyUIClient(config.comfyui.url)
     rag = RagIndex(Path(config.rag.chroma_dir), ollama, config.rag.embed_model)
     manifest = load_manifest(WORKFLOWS_DIR)
+    trace_logger = TraceLogger(Path(config.traces.dir), enabled=config.traces.enabled)
 
     orchestrator = Orchestrator(
         config=config,
@@ -48,6 +50,7 @@ def create_app() -> FastAPI:
         rag=rag,
         workflows_dir=WORKFLOWS_DIR,
         manifest=manifest,
+        trace_logger=trace_logger,
     )
 
     api = build_api(
