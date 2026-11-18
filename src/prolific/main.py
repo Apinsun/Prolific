@@ -105,4 +105,5 @@ if __name__ == "__main__":
         host=config.server.host,
         port=config.server.port,
         reload=False,
+        log_config=None,  # garde notre config de logging (pas de spam d'accès HTTP)
     )

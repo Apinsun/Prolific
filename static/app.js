@@ -30,6 +30,7 @@ async function loadConfig() {
   const cfg = await api('/config');
   fillSelect($('#workflow'), cfg.workflows.map((w) => ({ value: w.name, label: `${w.name} — ${w.style}` })));
   fillSelect($('#model'), [{ value: '', label: '— défaut config —' }, ...cfg.models.map((m) => ({ value: m, label: m }))]);
+  fillSelect($('#preset'), [{ value: '', label: '— défaut (draft_system.txt) —' }, ...(cfg.presets || []).map((p) => ({ value: p, label: p }))]);
   $('#datasets').innerHTML = cfg.datasets.length
     ? cfg.datasets.map((d) => `<label class="check"><input type="checkbox" name="dataset" value="${d}"> ${escapeHtml(d)}</label>`).join('')
     : '<em>Aucun dataset indexé.</em>';
@@ -58,6 +59,7 @@ function formToPayload() {
     minutes: objectiveType === 'duration' ? parseInt($('#minutes').value, 10) : null,
     orientation: $('#orientation').value,
     style: $('#style').value,
+    preset: $('#preset').value || null,
     datasets,
     swap_vram: $('#swap_vram').checked,
     positive_suffix: $('#positive_suffix').value.trim() || null,
@@ -101,6 +103,7 @@ function renderJobParams(job) {
     ['Workflow', escapeHtml(job.workflow ?? '')],
     ['Modèle (LLM)', fmt(job.model)],
     ['Style', fmt(job.style)],
+    ['Prompt de base', fmt(job.preset)],
     ['Orientation', fmt(job.orientation)],
     ['Datasets', (job.datasets || []).length ? escapeHtml(job.datasets.join(', ')) : '—'],
     ['Swap VRAM', yn(job.swap_vram)],

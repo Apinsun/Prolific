@@ -12,6 +12,7 @@ from prolific.clients.ollama import OllamaClient
 from prolific.config import Config
 from prolific.db import Database, serialize_job
 from prolific.orchestrator import Orchestrator
+from prolific.prompting import list_presets
 from prolific.rag import RagIndex
 from prolific.traces import TraceLogger
 
@@ -41,6 +42,7 @@ class JobCreate(BaseModel):
     filename_prefix: str | None = None
     draft_batch_size: int | None = None
     enable_traces: bool = True
+    preset: str | None = None
 
 
 def build_api(
@@ -99,6 +101,7 @@ def build_api(
             "datasets": rag.list_datasets(),
             "styles": STYLES,
             "orientations": ORIENTATIONS,
+            "presets": list_presets(orchestrator.prompts_dir),
         }
 
     @router.get("/model_temperature")
@@ -141,6 +144,7 @@ def build_api(
             filename_prefix=payload.filename_prefix,
             draft_batch_size=payload.draft_batch_size,
             enable_traces=payload.enable_traces,
+            preset=payload.preset,
         )
         return {"job_id": job_id}
 

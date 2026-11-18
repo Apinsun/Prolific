@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     filename_prefix   TEXT,
     draft_batch_size  INTEGER,
     enable_traces     INTEGER NOT NULL DEFAULT 1,
+    preset            TEXT,
     images_target     INTEGER,
     images_done   INTEGER NOT NULL DEFAULT 0,
     error         TEXT,
@@ -96,6 +97,7 @@ _COLUMN_MIGRATIONS = [
     ("jobs", "filename_prefix", "TEXT"),
     ("jobs", "draft_batch_size", "INTEGER"),
     ("jobs", "enable_traces", "INTEGER NOT NULL DEFAULT 1"),
+    ("jobs", "preset", "TEXT"),
 ]
 
 
@@ -177,6 +179,7 @@ class Database:
         filename_prefix: str | None = None,
         draft_batch_size: int | None = None,
         enable_traces: bool = True,
+        preset: str | None = None,
         images_target: int | None = None,
     ) -> int:
         now = _now()
@@ -185,8 +188,8 @@ class Database:
                (objective, theme, workflow, style, orientation, datasets,
                 swap_vram, seed, positive_suffix, negative, temperature, batch, min_words,
                 random_tags, random_tags_count, model, filename_prefix, draft_batch_size,
-                enable_traces, images_target, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                enable_traces, preset, images_target, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
                 theme,
@@ -207,6 +210,7 @@ class Database:
                 filename_prefix,
                 draft_batch_size,
                 int(enable_traces),
+                preset,
                 images_target,
                 now,
                 now,

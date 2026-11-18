@@ -44,12 +44,12 @@ def _run_until_answer(
 
         content = resp.content if isinstance(resp.content, str) else str(resp.content)
         if content:
-            logger.info("llm (%d) : %s", round_idx + 1, content)
+            logger.info("llm (%d) — réponse :\n%s", round_idx + 1, content)
 
         extra = getattr(resp, "additional_kwargs", None) or {}
         thinking = extra.get("reasoning_content") or extra.get("thinking")
         if thinking:
-            logger.info("llm (%d) thinking : %s", round_idx + 1, thinking)
+            logger.info("llm (%d) — raisonnement :\n%s", round_idx + 1, thinking)
 
         if not resp.tool_calls:
             break
@@ -69,8 +69,11 @@ def _run_until_answer(
             tool_calls_log.append(
                 {"name": call["name"], "args": call.get("args"), "result": content}
             )
-            logger.info("tool call : %s(%s)", call["name"], call.get("args"))
-            logger.info("tool result : %s", content[:500])
+            logger.info(
+                "llm (%d) — tool call : %s(%s)",
+                round_idx + 1, call["name"], call.get("args"),
+            )
+            logger.info("llm (%d) — tool result : %s", round_idx + 1, content[:500])
             messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
     return resp
 
@@ -184,6 +187,7 @@ def draft_prompts_agent(
     min_words: int = 0,
     random_terms: list[list[str]] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
+    preset: str | None = None,
 ) -> tuple[list[str], list[str | None], list[dict], list[dict]]:
     """Rédige `n` prompts via une boucle LLM↔outils, puis raffine si trop courts.
 
@@ -191,9 +195,12 @@ def draft_prompts_agent(
     tout l'échange (system, user, assistant, tool) — utile pour le fine-tuning.
     """
     system = build_draft_system(
-        style=style, datasets=datasets, random_terms=random_terms, prompts_dir=prompts_dir
+        style=style, datasets=datasets, random_terms=random_terms, prompts_dir=prompts_dir,
+        preset=preset,
     )
     user = build_draft_user(n=n, theme=theme, history=history, prompts_dir=prompts_dir)
+    logger.info("draft — system prompt :\n%s", system)
+    logger.info("draft — user prompt :\n%s", user)
 
     llm_with_tools = llm.bind_tools(tools) if tools else llm
     messages: list = [SystemMessage(content=system), HumanMessage(content=user)]
@@ -220,6 +227,7 @@ def draft_prompts_agent(
         refine = _build_refine_message(
             [p for _, p in short], min_words, style, tools[0] if tools else None
         )
+        logger.info("llm — raffinement (%d prompts courts) :\n%s", len(short), refine)
         messages.append(HumanMessage(content=refine))
         resp = _run_until_answer(llm_with_tools, tools, messages, tool_calls_log)
         if resp is None:

@@ -19,5 +19,8 @@ def setup_logging(config: Config) -> None:
     logging.basicConfig(level=level, format=_FORMAT, handlers=handlers, force=True)
 
     # baisse le bruit des dépendances tierces
-    for noisy in ("httpx", "httpcore", "chromadb", "langchain_ollama", "langchain_core", "urllib3"):
+    for noisy in (
+        "httpx", "httpcore", "chromadb", "langchain_ollama", "langchain_core",
+        "urllib3", "uvicorn.access",
+    ):
         logging.getLogger(noisy).setLevel(logging.WARNING)

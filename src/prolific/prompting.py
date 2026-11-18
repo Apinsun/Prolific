@@ -46,12 +46,42 @@ def _render(template: str, **kwargs: Any) -> str:
     return Template(template).substitute(**kwargs)
 
 
+def _safe_render(template: str, **kwargs: Any) -> str:
+    """Interpole les placeholders $... sans lever d'erreur si l'un est absent."""
+    return Template(template).safe_substitute(**kwargs)
+
+
+def list_presets(prompts_dir: Path = PROMPTS_DIR) -> list[str]:
+    """Liste les presets disponibles (fichiers .txt/.md dans prompts/presets/)."""
+    d = prompts_dir / "presets"
+    if not d.is_dir():
+        return []
+    names: list[str] = []
+    for p in d.iterdir():
+        if p.suffix not in (".txt", ".md"):
+            continue
+        if p.stem.upper() == "README" or p.stem.startswith(("_", ".")):
+            continue
+        names.append(p.stem)
+    return sorted(names)
+
+
+def load_preset(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
+    """Charge le contenu d'un preset, ou le draft_system par défaut s'il est introuvable."""
+    for ext in (".txt", ".md"):
+        path = prompts_dir / "presets" / f"{name}{ext}"
+        if path.exists():
+            return path.read_text(encoding="utf-8").strip()
+    return load_template("draft_system.txt", prompts_dir)
+
+
 def build_draft_system(
     *,
     style: str = "tags",
     datasets: list[str] | None = None,
     random_terms: list[list[str]] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
+    preset: str | None = None,
 ) -> str:
     style_file = _STYLE_FILES.get(style, _STYLE_FILES["tags"])
     style_directive = load_template(style_file, prompts_dir)
@@ -76,8 +106,13 @@ def build_draft_system(
     else:
         random_hint = ""
 
-    return _render(
-        load_template("draft_system.txt", prompts_dir),
+    if preset:
+        system_template = load_preset(preset, prompts_dir)
+    else:
+        system_template = load_template("draft_system.txt", prompts_dir)
+
+    return _safe_render(
+        system_template,
         style_directive=style_directive,
         datasets_hint=hint,
         random_hint=random_hint,
