@@ -71,7 +71,10 @@
         </label>
 
         <label class="inline"><input type="checkbox" id="swap_vram"> Swap VRAM (LLM ↔ modèle d'image)</label>
-        <label>Seed (optionnel) <input type="number" id="seed" placeholder="aléatoire"></label>
+        <div class="grid-2">
+          <label>Seed (optionnel) <input type="number" id="seed" placeholder="aléatoire"></label>
+          <label>Température <input type="number" id="temperature" min="0" max="2" step="0.1" value="0.8"></label>
+        </div>
 
         <button type="submit" id="submit-btn">Lancer</button>
       </form>

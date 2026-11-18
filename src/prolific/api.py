@@ -30,6 +30,7 @@ class JobCreate(BaseModel):
     swap_vram: bool = False
     positive_suffix: str | None = None
     negative: str | None = None
+    temperature: float | None = None
     seed: int | None = None
 
 
@@ -88,6 +89,7 @@ def build_api(
             "datasets": rag.list_datasets(),
             "styles": STYLES,
             "orientations": ORIENTATIONS,
+            "default_temperature": config.llm.temperature,
         }
 
     @router.post("/jobs")
@@ -117,6 +119,7 @@ def build_api(
             seed=payload.seed,
             positive_suffix=payload.positive_suffix,
             negative=payload.negative,
+            temperature=payload.temperature,
         )
         return {"job_id": job_id}
 

@@ -80,6 +80,7 @@ def build_mcp(
         datasets: list[str] | None = None,
         swap_vram: bool = False,
         seed: int | None = None,
+        temperature: float | None = None,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -94,6 +95,7 @@ def build_mcp(
             datasets: Datasets RAG actifs pour la rédaction.
             swap_vram: Décharger/recharger les modèles autour des lots.
             seed: Seed fixe (optionnel).
+            temperature: Créativité du LLM (0.0-2.0, défaut = config).
         """
         if objective_type == "count":
             if not n:
@@ -115,6 +117,7 @@ def build_mcp(
             datasets=datasets,
             swap_vram=swap_vram,
             seed=seed,
+            temperature=temperature,
         )
 
     @mcp.tool()

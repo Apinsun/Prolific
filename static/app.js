@@ -31,6 +31,7 @@ async function loadConfig() {
   $('#datasets').innerHTML = cfg.datasets.length
     ? cfg.datasets.map((d) => `<label class="check"><input type="checkbox" name="dataset" value="${d}"> ${escapeHtml(d)}</label>`).join('')
     : '<em>Aucun dataset indexé.</em>';
+  if (cfg.default_temperature != null) $('#temperature').value = cfg.default_temperature;
 }
 
 function formToPayload() {
@@ -49,6 +50,7 @@ function formToPayload() {
     swap_vram: $('#swap_vram').checked,
     positive_suffix: $('#positive_suffix').value.trim() || null,
     negative: $('#negative').value.trim() || null,
+    temperature: $('#temperature').value ? parseFloat($('#temperature').value) : null,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
   };
 }

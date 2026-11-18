@@ -54,6 +54,7 @@ class OrchestratorState(TypedDict, total=False):
     seed: int | None
     positive_suffix: str | None
     negative: str | None
+    temperature: float | None
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -91,7 +92,8 @@ class Orchestrator:
         workflows_dir: Path,
         manifest: dict[str, Any],
         prompts_dir: Path = PROMPTS_DIR,
-        llm_factory: Callable[[str], Any] | None = None,
+        llm_factory: Callable[[str, float], Any] | None = None,
+        checkpointer_path: Path = Path("checkpoints.sqlite"),
     ) -> None:
         self.config = config
         self.db = db
@@ -102,11 +104,13 @@ class Orchestrator:
         self.manifest = manifest
         self.prompts_dir = prompts_dir
         self._llm_factory = llm_factory or (
-            lambda model: ChatOllama(model=model, base_url=self.config.llm.base_url)
+            lambda model, temperature: ChatOllama(
+                model=model, base_url=self.config.llm.base_url, temperature=temperature
+            )
         )
 
         self._stop_events: dict[int, threading.Event] = {}
-        conn = sqlite3.connect("checkpoints.sqlite", check_same_thread=False)
+        conn = sqlite3.connect(checkpointer_path, check_same_thread=False)
         self._checkpointer = SqliteSaver(conn)
         self._checkpointer.setup()
         self._graph = self._build_graph()
@@ -187,10 +191,13 @@ class Orchestrator:
         datasets = state.get("datasets", [])
         tools = [make_search_terms_tool(self.rag, datasets)] if datasets else []
         model = state.get("model") or self.config.llm.model
-        llm = self._llm_factory(model)
+        temperature = state.get("temperature")
+        if temperature is None:
+            temperature = self.config.llm.temperature
+        llm = self._llm_factory(model, temperature)
         logger.info(
-            "job %s — rédaction de %d prompts (style=%s datasets=%s)",
-            state["job_id"], batch_size, state.get("style"), datasets,
+            "job %s — rédaction de %d prompts (style=%s datasets=%s temperature=%s)",
+            state["job_id"], batch_size, state.get("style"), datasets, temperature,
         )
 
         try:
@@ -389,6 +396,7 @@ class Orchestrator:
         model: str | None = None,
         positive_suffix: str | None = None,
         negative: str | None = None,
+        temperature: float | None = None,
     ) -> int:
         """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -407,6 +415,7 @@ class Orchestrator:
             seed=str(seed) if seed is not None else None,
             positive_suffix=positive_suffix,
             negative=negative,
+            temperature=temperature,
             images_target=images_target,
         )
         self.db.update_job(job_id, status="running", started_at=_now())
@@ -428,6 +437,7 @@ class Orchestrator:
             "seed": seed,
             "positive_suffix": positive_suffix,
             "negative": negative,
+            "temperature": temperature,
         }
 
         self._stop_events[job_id] = threading.Event()

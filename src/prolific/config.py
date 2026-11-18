@@ -14,6 +14,7 @@ class LLMConfig(BaseModel):
     provider: str = "ollama"
     base_url: str = "http://localhost:11434"
     model: str = ""
+    temperature: float = 0.8
 
 
 class ComfyUIConfig(BaseModel):
