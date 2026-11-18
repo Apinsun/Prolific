@@ -132,7 +132,7 @@ async function loadJobDetail(id, { force = false } = {}) {
   }
   lastDetailKey = key;
   const done = (job.images || []).filter((i) => i.status === 'done');
-  const running = ['running', 'pending'].includes(job.status);
+  const running = ['running', 'pending', 'queued'].includes(job.status);
   const jobChanged = $('#job-detail').dataset.jobId != id;
   if (jobChanged || force) detailTab = 'images';
   $('#job-detail').dataset.jobId = id;

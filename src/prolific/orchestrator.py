@@ -10,13 +10,14 @@ Graphe : plan → draft → generate → adapt → (draft | finish).
 - `finish`   : clôture le job en base.
 
 Checkpointing via SqliteSaver (reprise), arrêt via un Event consulté entre images.
-Le graphe est synchrone et tourne dans un thread en arrière-plan.
+Le graphe est synchrone ; un worker unique dépile les jobs (FIFO) en arrière-plan.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import queue
 import random
 import sqlite3
 import threading
@@ -130,10 +131,16 @@ class Orchestrator:
         )
 
         self._stop_events: dict[int, threading.Event] = {}
+        self._pending_states: dict[int, OrchestratorState] = {}
+        self._queue: queue.Queue[int] = queue.Queue()
         conn = sqlite3.connect(checkpointer_path, check_same_thread=False)
         self._checkpointer = SqliteSaver(conn)
         self._checkpointer.setup()
         self._graph = self._build_graph()
+        self._worker = threading.Thread(
+            target=self._worker_loop, daemon=True, name="job-worker"
+        )
+        self._worker.start()
 
     # ── construction du graphe ────────────────────────────────────────
     def _build_graph(self):
@@ -558,7 +565,7 @@ class Orchestrator:
         draft_batch_size: int | None = None,
         enable_traces: bool = True,
     ) -> int:
-        """Crée un job en base et lance le graphe dans un thread. Retourne job_id."""
+        """Crée un job en base et l'enfile dans la file FIFO. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
         if style is None:
             style = entry.get("style", "tags")
@@ -588,7 +595,7 @@ class Orchestrator:
             enable_traces=enable_traces,
             images_target=images_target,
         )
-        self.db.update_job(job_id, status="running", started_at=_now())
+        self.db.update_job(job_id, status="queued")
         logger.info(
             "job %s soumis — workflow=%r thème=%r objectif=%r swap_vram=%s datasets=%s",
             job_id, workflow, theme, objective, swap_vram, datasets or [],
@@ -618,9 +625,30 @@ class Orchestrator:
         }
 
         self._stop_events[job_id] = threading.Event()
-        thread = threading.Thread(target=self._run, args=(job_id, initial), daemon=True)
-        thread.start()
+        self._pending_states[job_id] = initial
+        self._queue.put(job_id)
         return job_id
+
+    def _worker_loop(self) -> None:
+        """Worker unique : dépile les jobs dans l'ordre (FIFO) et les exécute."""
+        while True:
+            job_id = self._queue.get()
+            try:
+                if self._stop_events.get(job_id, threading.Event()).is_set():
+                    self.db.update_job(
+                        job_id, status="stopped", error="arrêté avant exécution",
+                        finished_at=_now(),
+                    )
+                    continue
+                self.db.update_job(job_id, status="running", started_at=_now())
+                initial = self._pending_states.pop(job_id, None)
+                if initial is None:
+                    continue
+                self._run(job_id, initial)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("worker — erreur sur le job %s : %s", job_id, exc)
+            finally:
+                self._queue.task_done()
 
     def _run(self, job_id: int, initial: OrchestratorState) -> None:
         run_config = {"configurable": {"thread_id": str(job_id)}}
@@ -631,8 +659,14 @@ class Orchestrator:
             self.db.update_job(job_id, status="failed", error=str(exc), finished_at=_now())
 
     def stop(self, job_id: int) -> None:
-        """Demande un arrêt propre (pris en compte entre deux images)."""
+        """Demande un arrêt propre (entre deux images, ou avant exécution si en file)."""
         event = self._stop_events.get(job_id)
         if event is not None:
             logger.info("job %s — demande d'arrêt", job_id)
             event.set()
+        job = self.db.get_job(job_id)
+        if job is not None and job["status"] == "queued":
+            self.db.update_job(
+                job_id, status="stopped", error="arrêté avant exécution",
+                finished_at=_now(),
+            )

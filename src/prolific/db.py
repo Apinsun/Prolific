@@ -232,7 +232,8 @@ class Database:
                 cur = conn.execute(
                     "UPDATE jobs SET status = 'stopped', "
                     "error = 'interrompu (redémarrage du service)', "
-                    "finished_at = ?, updated_at = ? WHERE status IN ('running', 'pending')",
+                    "finished_at = ?, updated_at = ? "
+                    "WHERE status IN ('running', 'pending', 'queued')",
                     (now, now),
                 )
                 conn.commit()

@@ -116,7 +116,7 @@ button.danger { background: #d9534f; color: #fff; }
 .badge.done { background: #1f3d2b; color: #7fe0a0; }
 .badge.failed { background: #3d1f1f; color: #ff8a8a; }
 .badge.stopped { background: #3d3520; color: #ffd08a; }
-.badge.pending { background: #333; color: #ccc; }
+.badge.queued { background: #2a2f3a; color: #9fb0c8; }
 
 #job-detail h3 { margin: 0 0 8px; font-size: 15px; }
 .meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
