@@ -1,2 +1,2 @@
-Termes aléatoires proposés pour introduire de la variété (tu peux les intégrer ou non) :
+Pour varier, voici des termes aléatoires suggérés — un ensemble par prompt, tu peux les intégrer ou non :
 $terms

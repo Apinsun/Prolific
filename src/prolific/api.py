@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -150,11 +151,29 @@ def build_api(
         orchestrator.stop(job_id)
         return {"status": "stopping"}
 
+    @router.delete("/jobs/{job_id}/traces")
+    def delete_job_traces(job_id: int) -> dict[str, str]:
+        """Retire uniquement les traces (dataset de fine-tuning), garde le job."""
+        if db.get_job(job_id) is None:
+            raise HTTPException(status_code=404, detail="job introuvable")
+        if trace_logger is not None:
+            trace_logger.delete_job(job_id)
+        return {"status": "traces_deleted"}
+
     @router.delete("/jobs/{job_id}")
     def delete_job(job_id: int) -> dict[str, str]:
+        """Supprime le job, ses images (et les fichiers si output_dir est configuré)."""
         if db.get_job(job_id) is None:
             raise HTTPException(status_code=404, detail="job introuvable")
         orchestrator.stop(job_id)
+        if config.comfyui.output_dir:
+            out = Path(config.comfyui.output_dir)
+            for img in db.list_images(job_id):
+                if img.get("path"):
+                    try:
+                        (out / img["path"]).unlink(missing_ok=True)
+                    except OSError:
+                        pass
         db.delete_job(job_id)
         if trace_logger is not None:
             trace_logger.delete_job(job_id)

@@ -50,7 +50,7 @@ def build_draft_system(
     *,
     style: str = "tags",
     datasets: list[str] | None = None,
-    random_terms: list[str] | None = None,
+    random_terms: list[list[str]] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
 ) -> str:
     style_file = _STYLE_FILES.get(style, _STYLE_FILES["tags"])
@@ -65,9 +65,13 @@ def build_draft_system(
         hint = ""
 
     if random_terms:
+        lines = "\n".join(
+            f"- prompt {i} : {', '.join(terms)}"
+            for i, terms in enumerate(random_terms, 1)
+        )
         random_hint = _render(
             load_template("random_hint.txt", prompts_dir),
-            terms=", ".join(random_terms),
+            terms=lines,
         )
     else:
         random_hint = ""

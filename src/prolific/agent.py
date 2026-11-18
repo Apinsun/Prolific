@@ -116,7 +116,7 @@ def draft_prompts_agent(
     datasets: list[str] | None = None,
     history: list[str] | None = None,
     min_words: int = 0,
-    random_terms: list[str] | None = None,
+    random_terms: list[list[str]] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
 ) -> tuple[list[str], list[str | None], list[dict], list[dict]]:
     """Rédige `n` prompts via une boucle LLM↔outils, puis raffine si trop courts.

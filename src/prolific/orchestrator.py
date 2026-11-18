@@ -202,9 +202,11 @@ class Orchestrator:
 
         datasets = state.get("datasets", [])
         tools = [make_search_terms_tool(self.rag, datasets)] if datasets else []
-        random_terms: list[str] = []
+        random_terms: list[list[str]] = []
         if state.get("random_tags") and datasets:
-            random_terms = self.rag.random_terms(datasets, k=5)
+            random_terms = [
+                self.rag.random_terms(datasets, k=5) for _ in range(batch_size)
+            ]
         model = state.get("model") or self.config.llm.model
         temperature = state.get("temperature")  # None = défaut du modèle Ollama
         llm = self._llm_factory(model, temperature)

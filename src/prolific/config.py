@@ -19,6 +19,7 @@ class LLMConfig(BaseModel):
 class ComfyUIConfig(BaseModel):
     url: str = "http://127.0.0.1:8188"
     timeout: float = 300.0
+    output_dir: str = ""
 
 
 class OutputConfig(BaseModel):

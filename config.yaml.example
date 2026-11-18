@@ -8,6 +8,7 @@ llm:
 comfyui:
   url: http://127.0.0.1:8188
   timeout: 300                # secondes max par génération
+  output_dir: ""              # dossier output de ComfyUI (pour supprimer les fichiers) ; vide = pas de suppression
 
 output:
   dir: ./output

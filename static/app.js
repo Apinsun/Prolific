@@ -86,7 +86,8 @@ async function loadJobDetail(id) {
     <p class="meta">workflow : ${escapeHtml(job.workflow)} · style : ${escapeHtml(job.style ?? '—')} · ${job.images_done}/${job.images_target ?? '—'} images</p>
     ${job.error ? `<p class="error">${escapeHtml(job.error)}</p>` : ''}
     ${running ? '<button id="stop-btn" type="button">Arrêter</button>' : ''}
-    <button id="delete-btn" type="button" class="ghost">Supprimer</button>
+    <button id="untrace-btn" type="button" class="ghost">Retirer des traces</button>
+    <button id="delete-btn" type="button" class="danger">Supprimer le job</button>
     <div class="thumbs">
       ${done.map((i) => `<figure><img src="${i.url}" loading="lazy" alt=""><figcaption>${escapeHtml(i.positive)}</figcaption></figure>`).join('') || '<p class="meta">Aucune image générée pour l\'instant.</p>'}
     </div>
@@ -96,9 +97,15 @@ async function loadJobDetail(id) {
     await api('/jobs/' + id + '/stop', { method: 'POST' });
     loadJobDetail(id);
   });
+  const untrace = $('#untrace-btn');
+  if (untrace) untrace.addEventListener('click', async () => {
+    if (!confirm('Retirer ce job des traces (dataset de fine-tuning) ? Le job et ses images restent.')) return;
+    await api('/jobs/' + id + '/traces', { method: 'DELETE' });
+    loadJobDetail(id);
+  });
   const del = $('#delete-btn');
   if (del) del.addEventListener('click', async () => {
-    if (!confirm('Supprimer ce job, ses images et ses traces ?')) return;
+    if (!confirm('Supprimer le job, ses images (et les fichiers générés si configuré) ainsi que ses traces ?')) return;
     await api('/jobs/' + id, { method: 'DELETE' });
     currentJobId = null;
     $('#job-detail').innerHTML = '<p class="meta">Sélectionne un job pour voir ses images.</p>';
