@@ -1,0 +1,19 @@
+# Configuration Prolific — copier vers config.yaml et adapter
+
+llm:
+  provider: ollama            # MVP : uniquement ollama
+  base_url: http://localhost:11434
+  model: ""                   # défaut, surchargé par job / dropdown
+
+comfyui:
+  url: http://127.0.0.1:8188
+
+output:
+  dir: ./output
+
+server:
+  host: 127.0.0.1
+  port: 8000
+
+datasets:
+  dir: ./datasets             # CSVs (term, definition, category) à indexer

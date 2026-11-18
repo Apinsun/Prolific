@@ -1,0 +1,33 @@
+# ==== Python ====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# ==== Données d'application ====
+output/
+chroma_db/
+*.sqlite
+*.sqlite3
+*.db
+
+# ==== Traces (dataset d'entraînement futur — JAMAIS commité) ====
+traces/
+*.jsonl
+
+# ==== Workflows exportés (hors repo) ====
+workflows/*
+!workflows/manifest.example.json
+!workflows/README.md
+
+# ==== Secrets / env ====
+.env
+.env.*
+
+# ==== OS ====
+.DS_Store

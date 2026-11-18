@@ -1,0 +1,20 @@
+{
+  "illustrious_ladybug": {
+    "file": "illustrious-ladybug.json",
+    "description": "Workflow Illustrious + LoRA (exemple).",
+    "style": "tags",
+    "avg_seconds": null,
+    "formats": {
+      "carre": "1024x1024",
+      "paysage": "1216x832",
+      "portrait": "832x1216"
+    },
+    "slots": {
+      "positive": { "node": "16", "field": "string_a" },
+      "negative": { "node": "12", "field": "text" },
+      "width":    { "node": "15", "field": "value" },
+      "height":   { "node": "14", "field": "value" },
+      "seeds":    ["10", "9"]
+    }
+  }
+}
