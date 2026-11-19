@@ -71,6 +71,7 @@ class OrchestratorState(TypedDict, total=False):
     draft_batch_size: int | None
     enable_traces: bool
     preset: str | None
+    forced_searches: int
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -258,6 +259,7 @@ class Orchestrator:
                 random_terms=random_terms,
                 prompts_dir=self.prompts_dir,
                 preset=state.get("preset"),
+                forced_searches=state.get("forced_searches", 0),
             )
         except Exception as exc:  # noqa: BLE001 — on capture tout pour tracer le job
             logger.error("job %s — échec de la rédaction : %s", state["job_id"], exc)
@@ -567,6 +569,7 @@ class Orchestrator:
         draft_batch_size: int | None = None,
         enable_traces: bool = True,
         preset: str | None = None,
+        forced_searches: int = 0,
     ) -> int:
         """Crée un job en base et l'enfile dans la file FIFO. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -597,6 +600,7 @@ class Orchestrator:
             draft_batch_size=draft_batch_size,
             enable_traces=enable_traces,
             preset=preset,
+            forced_searches=forced_searches,
             images_target=images_target,
         )
         self.db.update_job(job_id, status="queued")
@@ -627,6 +631,7 @@ class Orchestrator:
             "draft_batch_size": draft_batch_size,
             "enable_traces": enable_traces,
             "preset": preset,
+            "forced_searches": forced_searches,
         }
 
         self._stop_events[job_id] = threading.Event()

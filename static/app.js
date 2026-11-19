@@ -79,6 +79,7 @@ function formToPayload() {
     random_tags_count: parseInt($('#random_tags_count').value, 10) || 15,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
     enable_traces: $('#enable_traces').checked,
+    forced_searches: parseInt($('#forced_searches').value, 10) || 0,
   };
 }
 
@@ -175,6 +176,7 @@ async function copyJobParams(id) {
   $('#negative').value = job.negative ?? '';
   $('#filename_prefix').value = job.filename_prefix ?? '';
   $('#draft_batch_size').value = job.draft_batch_size ?? '';
+  $('#forced_searches').value = job.forced_searches ?? 0;
   $('#batch').value = job.batch ?? 1;
   $('#min_words').value = job.min_words ?? 0;
   $('#temperature').value = job.temperature ?? '';
@@ -203,6 +205,7 @@ function renderJobParams(job) {
     ['Swap VRAM', yn(job.swap_vram)],
     ['Batch (images par prompt)', fmt(job.batch)],
     ['Taille du lot de rédaction', job.draft_batch_size != null ? job.draft_batch_size : 'tout en un appel'],
+    ['Recherches forcées', job.forced_searches ?? 0],
     ['Longueur min', fmt(job.min_words)],
     ['Mots aléatoires (RAG)', yn(job.random_tags)],
     ['Mots aléatoires (nb)', job.random_tags_count != null ? job.random_tags_count : 15],

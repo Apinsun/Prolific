@@ -116,6 +116,7 @@ def build_mcp(
         draft_batch_size: int | None = None,
         enable_traces: bool = True,
         preset: str | None = None,
+        forced_searches: int = 0,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -141,6 +142,7 @@ def build_mcp(
             draft_batch_size: Taille max d'un lot de rédaction (None = tout en un appel).
             enable_traces: Écrire les traces (dataset de fine-tuning). Défaut True.
             preset: Nom d'un preset de prompt (voir prompts/presets/).
+            forced_searches: Nombre de recherches outils imposé avant la rédaction.
         """
         if objective_type == "count":
             if not n:
@@ -173,6 +175,7 @@ def build_mcp(
             draft_batch_size=draft_batch_size,
             enable_traces=enable_traces,
             preset=preset,
+            forced_searches=forced_searches,
         )
 
     @mcp.tool()

@@ -93,6 +93,9 @@
         <label>Taille du lot de rédaction (vide = tout en un appel)
           <input type="number" id="draft_batch_size" min="1" placeholder="ex : 20" title="Nombre max de prompts rédigés par appel LLM. Plus petit = plus fiable et varié, mais plus lent.">
         </label>
+        <label>Recherches forcées (0 = le modèle décide)
+          <input type="number" id="forced_searches" min="0" value="0" title="Nombre de recherches outils imposé au LLM avant la rédaction des prompts">
+        </label>
 
         <label class="inline"><input type="checkbox" id="swap_vram"> Swap VRAM (LLM ↔ modèle d'image)</label>
         <label class="inline"><input type="checkbox" id="enable_traces" checked> Tracer (dataset fine-tuning)</label>

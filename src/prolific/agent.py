@@ -35,10 +35,17 @@ def _run_until_answer(
     tools: list,
     messages: list,
     tool_calls_log: list[dict],
+    min_tool_calls: int = 0,
 ) -> AIMessage | None:
-    """Boucle LLM↔outils jusqu'à une réponse finale (ou épuisement des itérations)."""
+    """Boucle LLM↔outils jusqu'à une réponse finale (ou épuisement des itérations).
+
+    Si `min_tool_calls` > 0, le LLM est relancé tant qu'il n'a pas effectué ce nombre
+    d'appels d'outils (recherches forcées).
+    """
     resp: AIMessage | None = None
-    for round_idx in range(MAX_TOOL_ITERATIONS):
+    done_calls = 0
+    max_rounds = max(MAX_TOOL_ITERATIONS, min_tool_calls + 1)
+    for round_idx in range(max_rounds):
         resp = llm_with_tools.invoke(messages)
         messages.append(resp)
 
@@ -52,6 +59,14 @@ def _run_until_answer(
             logger.info("llm (%d) — raisonnement :\n%s", round_idx + 1, thinking)
 
         if not resp.tool_calls:
+            if done_calls < min_tool_calls:
+                remaining = min_tool_calls - done_calls
+                messages.append(HumanMessage(content=(
+                    f"Tu n'as pas encore effectué le nombre de recherches demandé. "
+                    f"Effectue encore {remaining} recherche(s) avec les outils "
+                    f"(search_terms, list_categories ou random_term) avant de rédiger."
+                )))
+                continue
             break
 
         logger.info("llm (%d) — %d tool call(s)", round_idx + 1, len(resp.tool_calls))
@@ -66,6 +81,7 @@ def _run_until_answer(
                 except Exception as exc:  # noqa: BLE001
                     content = f"Erreur de l'outil : {exc}"
                     logger.error("tool call %s a échoué : %s", call["name"], exc)
+            done_calls += 1
             tool_calls_log.append(
                 {"name": call["name"], "args": call.get("args"), "result": content}
             )
@@ -125,24 +141,40 @@ def _parse_draft(
 
 
 def _build_refine_message(short_prompts: list[str], min_units: int, style: str, tool: Any) -> str:
-    """Construit la consigne d'enrichissement (avec suggestions RAG si outil dispo)."""
+    """Construit la consigne d'enrichissement (glossaire RAG dédoublonné + définitions)."""
     unit_label = "tags" if style == "tags" else "mots"
     lines = "\n".join(f"- {p}" for p in short_prompts)
-    suggestions = ""
+    glossary: dict[str, str] = {}
     if tool is not None:
+        seen_concepts: set[str] = set()
         for p in short_prompts:
+            if p in seen_concepts:
+                continue
+            seen_concepts.add(p)
             try:
-                result = tool.invoke({"concept": p, "top_k": 8})
+                result = tool.invoke({"concept": p, "top_k": 6})
                 data = json.loads(result)
-                terms = [t.get("term") for t in data if isinstance(t, dict) and t.get("term")][:8]
-                if terms:
-                    suggestions += f"\nTermes suggérés pour « {p} » : {', '.join(terms)}"
+                for item in data:
+                    if isinstance(item, dict) and item.get("term"):
+                        term = item["term"]
+                        if term not in glossary:
+                            glossary[term] = item.get("definition") or ""
             except Exception:
                 pass
+    suggestions = ""
+    if glossary:
+        entries = "\n".join(
+            f"- {t}" + (f" : {d}" if d else "")
+            for t, d in list(glossary.items())[:40]
+        )
+        suggestions = (
+            f"\nTermes suggérés (avec définitions, dédoublonnés) :\n{entries}\n"
+        )
     return (
         f"Les prompts suivants sont trop courts (moins de {min_units} {unit_label}). "
         f"Enrichis-les en ajoutant plus de détails (apparence, pose, environnement, "
-        f"éclairage, style).\n\n{lines}\n{suggestions}\n\n"
+        f"éclairage, style). Utilise les termes suggérés ci-dessous s'ils sont pertinents.\n\n"
+        f"{lines}\n{suggestions}\n"
         f"Réponds UNIQUEMENT au format JSON : {{\"prompts\": [\"...\", \"...\"]}} "
         f"avec uniquement les versions enrichies, dans le même ordre."
     )
@@ -188,6 +220,7 @@ def draft_prompts_agent(
     random_terms: list[list[str]] | None = None,
     prompts_dir: Path = PROMPTS_DIR,
     preset: str | None = None,
+    forced_searches: int = 0,
 ) -> tuple[list[str], list[str | None], list[dict], list[dict]]:
     """Rédige `n` prompts via une boucle LLM↔outils, puis raffine si trop courts.
 
@@ -199,6 +232,11 @@ def draft_prompts_agent(
         preset=preset,
     )
     user = build_draft_user(n=n, theme=theme, history=history, prompts_dir=prompts_dir)
+    if forced_searches > 0:
+        user += (
+            f"\n\nIMPORTANT : effectue exactement {forced_searches} recherches avec les "
+            f"outils (search_terms, list_categories ou random_term) avant de rédiger les prompts."
+        )
     logger.info("draft — system prompt :\n%s", system)
     logger.info("draft — user prompt :\n%s", user)
 
@@ -206,7 +244,10 @@ def draft_prompts_agent(
     messages: list = [SystemMessage(content=system), HumanMessage(content=user)]
     tool_calls_log: list[dict] = []
 
-    resp = _run_until_answer(llm_with_tools, tools, messages, tool_calls_log)
+    resp = _run_until_answer(
+        llm_with_tools, tools, messages, tool_calls_log,
+        min_tool_calls=forced_searches,
+    )
     raw = (
         resp.content if resp is not None and isinstance(resp.content, str)
         else str(resp.content) if resp is not None else ""

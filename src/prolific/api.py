@@ -43,6 +43,7 @@ class JobCreate(BaseModel):
     draft_batch_size: int | None = None
     enable_traces: bool = True
     preset: str | None = None
+    forced_searches: int = 0
 
 
 def build_api(
@@ -145,6 +146,7 @@ def build_api(
             draft_batch_size=payload.draft_batch_size,
             enable_traces=payload.enable_traces,
             preset=payload.preset,
+            forced_searches=payload.forced_searches,
         )
         return {"job_id": job_id}
 

@@ -1,5 +1,7 @@
 Tu as accès aux outils suivants (datasets disponibles : $datasets) :
-- search_terms(concept, top_k, category) : trouver des termes précis par concept.
-- list_categories() : lister les catégories disponibles dans les datasets.
+- search_terms(concept, top_k, category) : chercher des termes précis (avec leur définition) par concept.
+- list_categories() : lister les catégories disponibles.
 - random_term(category, count) : tirer des termes aléatoires (dans une catégorie si précisée).
+
+Pour les appeler, émets un appel d'outil avec les bons arguments ; les résultats te sont renvoyés au tour suivant. Tu peux enchaîner plusieurs recherches avant de rédiger.
 Utilise-les pour enrichir tes prompts avec des termes réels (pas inventés).
