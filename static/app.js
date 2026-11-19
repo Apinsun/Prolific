@@ -40,22 +40,32 @@ async function loadConfig() {
   $('#datasets').innerHTML = cfg.datasets.length
     ? cfg.datasets.map((d) => `<label class="check"><input type="checkbox" name="dataset" value="${d}"> ${escapeHtml(d)}</label>`).join('')
     : '<em>Aucun dataset indexé.</em>';
-  $('#datasets').addEventListener('change', () => {
-    const any = document.querySelectorAll('input[name="dataset"]:checked').length > 0;
+  $('#random_datasets').innerHTML = cfg.datasets.length
+    ? cfg.datasets.map((d) => `<label class="check"><input type="checkbox" name="random_dataset" value="${d}"> ${escapeHtml(d)}</label>`).join('')
+    : '<em>Aucun dataset indexé.</em>';
+
+  const anyRandomSource = () =>
+    document.querySelectorAll('input[name="dataset"]:checked').length > 0 ||
+    document.querySelectorAll('input[name="random_dataset"]:checked').length > 0;
+  const refreshRandomState = () => {
+    const any = anyRandomSource();
     $('#random_tags').disabled = !any;
     if (!any) {
       $('#random_tags').checked = false;
       $('#random_tags_count').disabled = true;
+    } else {
+      $('#random_tags_count').disabled = !$('#random_tags').checked;
     }
-  });
-  $('#random_tags').addEventListener('change', () => {
-    $('#random_tags_count').disabled = !$('#random_tags').checked;
-  });
+  };
+  $('#datasets').addEventListener('change', refreshRandomState);
+  $('#random_datasets').addEventListener('change', refreshRandomState);
+  $('#random_tags').addEventListener('change', refreshRandomState);
 }
 
 function formToPayload() {
   const objectiveType = document.querySelector('input[name="objective_type"]:checked').value;
   const datasets = [...document.querySelectorAll('input[name="dataset"]:checked')].map((c) => c.value);
+  const random_datasets = [...document.querySelectorAll('input[name="random_dataset"]:checked')].map((c) => c.value);
   return {
     theme: $('#theme').value.trim(),
     workflow: $('#workflow').value,
@@ -67,6 +77,7 @@ function formToPayload() {
     style: $('#style').value,
     preset: $('#preset').value || null,
     datasets,
+    random_datasets: random_datasets.length ? random_datasets : null,
     swap_vram: $('#swap_vram').checked,
     positive_suffix: $('#positive_suffix').value.trim() || null,
     negative: $('#negative').value.trim() || null,
@@ -79,6 +90,7 @@ function formToPayload() {
     random_tags_count: parseInt($('#random_tags_count').value, 10) || 15,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
     enable_traces: $('#enable_traces').checked,
+    test_mode: $('#test_mode').checked,
     forced_searches: parseInt($('#forced_searches').value, 10) || 0,
   };
 }
@@ -164,6 +176,11 @@ async function copyJobParams(id) {
   document.querySelectorAll('input[name="dataset"]').forEach((c) => {
     c.checked = datasets.includes(c.value);
   });
+  const randomDatasets = job.random_datasets || [];
+  document.querySelectorAll('input[name="random_dataset"]').forEach((c) => {
+    c.checked = randomDatasets.includes(c.value);
+  });
+  $('#test_mode').checked = !!job.test_mode;
   const hasRandom = !!job.random_tags && datasets.length > 0;
   $('#random_tags').disabled = datasets.length === 0;
   $('#random_tags').checked = hasRandom;
@@ -202,6 +219,8 @@ function renderJobParams(job) {
     ['Prompt de base', fmt(job.preset)],
     ['Orientation', fmt(job.orientation)],
     ['Datasets', (job.datasets || []).length ? escapeHtml(job.datasets.join(', ')) : '—'],
+    ['Datasets aléatoires', (job.random_datasets || []).length ? escapeHtml(job.random_datasets.join(', ')) : '— (mêmes que recherche)'],
+    ['Mode test', yn(job.test_mode)],
     ['Swap VRAM', yn(job.swap_vram)],
     ['Batch (images par prompt)', fmt(job.batch)],
     ['Taille du lot de rédaction', job.draft_batch_size != null ? job.draft_batch_size : 'tout en un appel'],

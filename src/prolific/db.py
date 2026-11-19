@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     enable_traces     INTEGER NOT NULL DEFAULT 1,
     preset            TEXT,
     forced_searches   INTEGER NOT NULL DEFAULT 0,
+    test_mode         INTEGER NOT NULL DEFAULT 0,
+    random_datasets   TEXT,
     images_target     INTEGER,
     images_done   INTEGER NOT NULL DEFAULT 0,
     error         TEXT,
@@ -76,7 +78,7 @@ def _now() -> str:
 def serialize_job(row: dict[str, Any]) -> dict[str, Any]:
     """Décode les colonnes stockées en JSON texte (objective, datasets) en objets."""
     out = dict(row)
-    for field in ("objective", "datasets"):
+    for field in ("objective", "datasets", "random_datasets"):
         if field in out and isinstance(out[field], str):
             try:
                 out[field] = json.loads(out[field])
@@ -100,6 +102,8 @@ _COLUMN_MIGRATIONS = [
     ("jobs", "enable_traces", "INTEGER NOT NULL DEFAULT 1"),
     ("jobs", "preset", "TEXT"),
     ("jobs", "forced_searches", "INTEGER NOT NULL DEFAULT 0"),
+    ("jobs", "test_mode", "INTEGER NOT NULL DEFAULT 0"),
+    ("jobs", "random_datasets", "TEXT"),
 ]
 
 
@@ -183,6 +187,8 @@ class Database:
         enable_traces: bool = True,
         preset: str | None = None,
         forced_searches: int = 0,
+        test_mode: bool = False,
+        random_datasets: list[str] | None = None,
         images_target: int | None = None,
     ) -> int:
         now = _now()
@@ -191,8 +197,10 @@ class Database:
                (objective, theme, workflow, style, orientation, datasets,
                 swap_vram, seed, positive_suffix, negative, temperature, batch, min_words,
                 random_tags, random_tags_count, model, filename_prefix, draft_batch_size,
-                enable_traces, preset, forced_searches, images_target, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                enable_traces, preset, forced_searches, test_mode, random_datasets,
+                images_target, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
                 theme,
@@ -215,6 +223,8 @@ class Database:
                 int(enable_traces),
                 preset,
                 int(forced_searches),
+                int(test_mode),
+                json.dumps(random_datasets or []),
                 images_target,
                 now,
                 now,

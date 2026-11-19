@@ -44,6 +44,8 @@ class JobCreate(BaseModel):
     enable_traces: bool = True
     preset: str | None = None
     forced_searches: int = 0
+    test_mode: bool = False
+    random_datasets: list[str] | None = None
 
 
 def build_api(
@@ -147,6 +149,8 @@ def build_api(
             enable_traces=payload.enable_traces,
             preset=payload.preset,
             forced_searches=payload.forced_searches,
+            test_mode=payload.test_mode,
+            random_datasets=payload.random_datasets,
         )
         return {"job_id": job_id}
 

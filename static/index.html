@@ -75,6 +75,9 @@
         <label>Datasets RAG (recherche de termes)
           <div id="datasets" class="checks"></div>
         </label>
+        <label>Datasets pour l'aléatoire (vide = mêmes que la recherche)
+          <div id="random_datasets" class="checks"></div>
+        </label>
 
         <label class="inline"><input type="checkbox" id="random_tags" disabled> Mots aléatoires (RAG)</label>
         <label>Nombre de mots aléatoires (par prompt)
@@ -99,6 +102,7 @@
 
         <label class="inline"><input type="checkbox" id="swap_vram"> Swap VRAM (LLM ↔ modèle d'image)</label>
         <label class="inline"><input type="checkbox" id="enable_traces" checked> Tracer (dataset fine-tuning)</label>
+        <label class="inline"><input type="checkbox" id="test_mode"> Mode test (traces + métriques séparées)</label>
         <div class="grid-2">
           <label>Seed (optionnel) <input type="number" id="seed" placeholder="aléatoire"></label>
           <label>Température <input type="number" id="temperature" min="0" max="2" step="0.1" placeholder="auto (défaut du modèle)"><span id="temperature-hint" class="hint"></span></label>

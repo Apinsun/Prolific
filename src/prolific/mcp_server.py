@@ -117,6 +117,8 @@ def build_mcp(
         enable_traces: bool = True,
         preset: str | None = None,
         forced_searches: int = 0,
+        test_mode: bool = False,
+        random_datasets: list[str] | None = None,
     ) -> int:
         """Crée et lance un job de génération.
 
@@ -143,6 +145,8 @@ def build_mcp(
             enable_traces: Écrire les traces (dataset de fine-tuning). Défaut True.
             preset: Nom d'un preset de prompt (voir prompts/presets/).
             forced_searches: Nombre de recherches outils imposé avant la rédaction.
+            test_mode: Mode test : traces et métriques dans traces/test/ (pas de traces normales).
+            random_datasets: Datasets où piocher l'aléatoire (None = datasets de recherche).
         """
         if objective_type == "count":
             if not n:
@@ -176,6 +180,8 @@ def build_mcp(
             enable_traces=enable_traces,
             preset=preset,
             forced_searches=forced_searches,
+            test_mode=test_mode,
+            random_datasets=random_datasets,
         )
 
     @mcp.tool()

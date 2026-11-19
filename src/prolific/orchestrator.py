@@ -73,6 +73,8 @@ class OrchestratorState(TypedDict, total=False):
     enable_traces: bool
     preset: str | None
     forced_searches: int
+    test_mode: bool
+    random_datasets: list[str] | None
 
     # état d'exécution (construit au fil du graphe)
     batch_size: int
@@ -208,7 +210,9 @@ class Orchestrator:
     def _draft(self, state: OrchestratorState) -> dict:
         if state.get("error"):
             return {}
-        trace = self.trace_logger is not None and state.get("enable_traces", True)
+        trace = self.trace_logger is not None and (
+            state.get("enable_traces", True) or state.get("test_mode", False)
+        )
         batch_size = state.get("batch_size", 1)
         if batch_size <= 0:
             return {"prompts": [], "continue_loop": False}
@@ -231,11 +235,12 @@ class Orchestrator:
                 make_list_categories_tool(self.rag, datasets),
                 make_random_term_tool(self.rag, datasets),
             ]
+        random_datasets = state.get("random_datasets") or datasets
         random_terms: list[list[str]] = []
-        if state.get("random_tags") and datasets:
+        if state.get("random_tags") and random_datasets:
             k = state.get("random_tags_count") or 15
             random_terms = [
-                self.rag.random_terms(datasets, k=k) for _ in range(batch_size)
+                self.rag.random_terms(random_datasets, k=k) for _ in range(batch_size)
             ]
         model = state.get("model") or self.config.llm.model
         temperature = state.get("temperature")  # None = défaut du modèle Ollama
@@ -301,7 +306,25 @@ class Orchestrator:
                 orientations=orientations,
                 tool_calls=tool_calls,
                 conversation=conversation,
+                test_mode=state.get("test_mode", False),
             )
+        if trace and state.get("test_mode"):
+            errors = [
+                {"name": tc.get("name"), "args": tc.get("args"), "error": tc.get("result")}
+                for tc in tool_calls
+                if tc.get("result", "").startswith(("Erreur de l'outil", "Outil inconnu"))
+            ]
+            self.trace_logger.log_metric({
+                "timestamp": _now(),
+                "job_id": state["job_id"],
+                "theme": state["theme"],
+                "style": state.get("style"),
+                "model": model,
+                "n_requested": batch_size,
+                "n_returned": len(prompts),
+                "tool_call_count": len(tool_calls),
+                "tool_call_errors": errors,
+            })
         if not prompts and batch_size > 0:
             return {
                 "prompts": [],
@@ -314,7 +337,9 @@ class Orchestrator:
         if state.get("error"):
             return {}
 
-        trace = self.trace_logger is not None and state.get("enable_traces", True)
+        trace = self.trace_logger is not None and (
+            state.get("enable_traces", True) or state.get("test_mode", False)
+        )
         job_id = state["job_id"]
         prompts = state.get("prompts", [])
         orientations = state.get("orientations", [])
@@ -448,6 +473,7 @@ class Orchestrator:
                                 status="done",
                                 path=path,
                                 duration=per_image,
+                                test_mode=state.get("test_mode", False),
                             )
 
                     # images attendues mais absentes du résultat
@@ -466,6 +492,7 @@ class Orchestrator:
                                 height=height,
                                 status="failed",
                                 error=msg,
+                                test_mode=state.get("test_mode", False),
                             )
                 except Exception as exc:  # noqa: BLE001
                     for iid in image_ids:
@@ -483,6 +510,7 @@ class Orchestrator:
                                 height=height,
                                 status="failed",
                                 error=str(exc),
+                                test_mode=state.get("test_mode", False),
                             )
         finally:
             if swap:
@@ -571,6 +599,8 @@ class Orchestrator:
         enable_traces: bool = True,
         preset: str | None = None,
         forced_searches: int = 0,
+        test_mode: bool = False,
+        random_datasets: list[str] | None = None,
     ) -> int:
         """Crée un job en base et l'enfile dans la file FIFO. Retourne job_id."""
         entry = self.manifest.get(workflow, {})
@@ -602,6 +632,8 @@ class Orchestrator:
             enable_traces=enable_traces,
             preset=preset,
             forced_searches=forced_searches,
+            test_mode=test_mode,
+            random_datasets=random_datasets,
             images_target=images_target,
         )
         self.db.update_job(job_id, status="queued")
@@ -633,6 +665,8 @@ class Orchestrator:
             "enable_traces": enable_traces,
             "preset": preset,
             "forced_searches": forced_searches,
+            "test_mode": test_mode,
+            "random_datasets": random_datasets,
         }
 
         self._stop_events[job_id] = threading.Event()
