@@ -200,6 +200,12 @@ def build_mcp(
         return f"Arrêt demandé pour le job {job_id}."
 
     @mcp.tool()
+    def resume_job(job_id: int) -> str:
+        """Reprend un job mis en pause (depuis le checkpoint LangGraph)."""
+        orchestrator.resume(job_id)
+        return f"Reprise demandée pour le job {job_id}."
+
+    @mcp.tool()
     def delete_traces(job_id: int) -> str:
         """Retire un job des traces (dataset de fine-tuning), sans supprimer le job."""
         if trace_logger is not None:

@@ -241,6 +241,7 @@ async function loadJobDetail(id, { force = false } = {}) {
     <p class="meta">workflow : ${escapeHtml(job.workflow)} · style : ${escapeHtml(job.style ?? '—')} · ${job.images_done}/${job.images_target ?? '—'} images</p>
     ${job.error ? `<p class="error">${escapeHtml(job.error)}</p>` : ''}
     ${running ? '<button id="stop-btn" type="button">Arrêter</button>' : ''}
+    ${job.status === 'paused' ? '<button id="resume-btn" type="button">Reprendre</button>' : ''}
     <button id="untrace-btn" type="button" class="ghost">Retirer des traces</button>
     <button id="delete-btn" type="button" class="danger">Supprimer le job (garde les traces)</button>
     <button id="purge-btn" type="button" class="danger">Supprimer job + traces</button>
@@ -260,6 +261,11 @@ async function loadJobDetail(id, { force = false } = {}) {
   const stop = $('#stop-btn');
   if (stop) stop.addEventListener('click', async () => {
     await api('/jobs/' + id + '/stop', { method: 'POST' });
+    loadJobDetail(id, { force: true });
+  });
+  const resume = $('#resume-btn');
+  if (resume) resume.addEventListener('click', async () => {
+    await api('/jobs/' + id + '/resume', { method: 'POST' });
     loadJobDetail(id, { force: true });
   });
   const untrace = $('#untrace-btn');

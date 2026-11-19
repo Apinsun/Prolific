@@ -29,6 +29,7 @@ from typing import Any, Callable, TypedDict
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 
 from prolific.agent import draft_prompts_agent
 from prolific.clients.comfyui import ComfyUIClient
@@ -133,8 +134,7 @@ class Orchestrator:
         )
 
         self._stop_events: dict[int, threading.Event] = {}
-        self._pending_states: dict[int, OrchestratorState] = {}
-        self._queue: queue.Queue[int] = queue.Queue()
+        self._queue: queue.Queue[tuple[int, OrchestratorState | None]] = queue.Queue()
         conn = sqlite3.connect(checkpointer_path, check_same_thread=False)
         self._checkpointer = SqliteSaver(conn)
         self._checkpointer.setup()
@@ -325,6 +325,12 @@ class Orchestrator:
         deadline = state.get("deadline")
         images_per_prompt = max(1, int(state.get("batch", 1)))
 
+        # idempotence (reprise après pause) : la base fait foi sur l'avancement réel
+        db_done = self.db.get_job(job_id)["images_done"] or 0
+        done_in_batch = max(0, db_done - generated)
+        generated = db_done
+        start_idx = done_in_batch // images_per_prompt
+
         # 1 cycle VRAM pour tout le lot : on décharge le LLM avant de générer
         if swap and model:
             self.ollama.unload(model)
@@ -335,7 +341,8 @@ class Orchestrator:
 
         durations: list[float] = []
         try:
-            for idx, prompt in enumerate(prompts):
+            for idx in range(start_idx, len(prompts)):
+                prompt = prompts[idx]
                 prompt_orientation = orientations[idx] if idx < len(orientations) else None
                 if state.get("orientation") == "auto":
                     valid = list_orientations(self.manifest, state["workflow"])
@@ -354,13 +361,7 @@ class Orchestrator:
                 negative = state.get("negative")
 
                 if self._stop_events.get(job_id, threading.Event()).is_set():
-                    return {
-                        "status": "stopped",
-                        "continue_loop": False,
-                        "prompts": [],
-                        "generated": generated,
-                        "batch_durations": durations,
-                    }
+                    interrupt("pause demandée")
                 if deadline is not None and time.monotonic() >= deadline:
                     break
                 if target is not None and generated >= target:
@@ -635,38 +636,42 @@ class Orchestrator:
         }
 
         self._stop_events[job_id] = threading.Event()
-        self._pending_states[job_id] = initial
-        self._queue.put(job_id)
+        self._queue.put((job_id, initial))
         return job_id
 
     def _worker_loop(self) -> None:
-        """Worker unique : dépile les jobs dans l'ordre (FIFO) et les exécute."""
+        """Worker unique : dépile les jobs (FIFO) ; gère reprise et pause."""
         while True:
-            job_id = self._queue.get()
+            job_id, initial = self._queue.get()
             try:
-                if self._stop_events.get(job_id, threading.Event()).is_set():
+                is_resume = initial is None
+                if (not is_resume) and self._stop_events.get(job_id, threading.Event()).is_set():
                     self.db.update_job(
                         job_id, status="stopped", error="arrêté avant exécution",
                         finished_at=_now(),
                     )
                     continue
-                self.db.update_job(job_id, status="running", started_at=_now())
-                initial = self._pending_states.pop(job_id, None)
-                if initial is None:
-                    continue
-                self._run(job_id, initial)
+                if is_resume:
+                    self.db.update_job(job_id, status="running")
+                else:
+                    self.db.update_job(job_id, status="running", started_at=_now())
+                result = self._run(job_id, initial)
+                if result is not None and "__interrupt__" in result:
+                    self.db.update_job(job_id, status="paused")
+                    logger.info("job %s — mis en pause (reprise possible)", job_id)
             except Exception as exc:  # noqa: BLE001
                 logger.exception("worker — erreur sur le job %s : %s", job_id, exc)
             finally:
                 self._queue.task_done()
 
-    def _run(self, job_id: int, initial: OrchestratorState) -> None:
+    def _run(self, job_id: int, initial: OrchestratorState | None) -> dict | None:
         run_config = {"configurable": {"thread_id": str(job_id)}}
         try:
-            self._graph.invoke(initial, config=run_config)
+            return self._graph.invoke(initial, config=run_config)
         except Exception as exc:  # noqa: BLE001
             logger.exception("job %s — erreur non capturée", job_id)
             self.db.update_job(job_id, status="failed", error=str(exc), finished_at=_now())
+            return None
 
     def stop(self, job_id: int) -> None:
         """Demande un arrêt propre (entre deux images, ou avant exécution si en file)."""
@@ -680,3 +685,16 @@ class Orchestrator:
                 job_id, status="stopped", error="arrêté avant exécution",
                 finished_at=_now(),
             )
+
+    def resume(self, job_id: int) -> None:
+        """Reprend un job mis en pause (relance le graphe depuis le checkpoint)."""
+        event = self._stop_events.get(job_id)
+        if event is not None:
+            event.clear()
+        else:
+            self._stop_events[job_id] = threading.Event()
+        job = self.db.get_job(job_id)
+        if job is not None and job["status"] == "paused":
+            self.db.update_job(job_id, status="queued")
+            self._queue.put((job_id, None))
+            logger.info("job %s — reprise demandée", job_id)

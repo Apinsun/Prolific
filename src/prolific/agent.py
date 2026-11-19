@@ -23,6 +23,11 @@ MAX_REFINE_ITERATIONS = 3
 logger = logging.getLogger(__name__)
 
 
+def _hr(title: str) -> str:
+    """Séparateur visuel pour délimiter les blocs dans les logs."""
+    return f"{'─' * 20} {title} {'─' * 20}"
+
+
 def _count_units(prompt: str, style: str) -> int:
     """Nombre d'unités : tags (séparés par virgules) ou mots (prose)."""
     if style == "tags":
@@ -51,12 +56,12 @@ def _run_until_answer(
 
         content = resp.content if isinstance(resp.content, str) else str(resp.content)
         if content:
-            logger.info("llm (%d) — réponse :\n%s", round_idx + 1, content)
+            logger.info("%s\n%s", _hr(f"RÉPONSE LLM (tour {round_idx + 1})"), content)
 
         extra = getattr(resp, "additional_kwargs", None) or {}
         thinking = extra.get("reasoning_content") or extra.get("thinking")
         if thinking:
-            logger.info("llm (%d) — raisonnement :\n%s", round_idx + 1, thinking)
+            logger.info("%s\n%s", _hr(f"RAISONNEMENT LLM (tour {round_idx + 1})"), thinking)
 
         if not resp.tool_calls:
             if done_calls < min_tool_calls:
@@ -86,10 +91,10 @@ def _run_until_answer(
                 {"name": call["name"], "args": call.get("args"), "result": content}
             )
             logger.info(
-                "llm (%d) — tool call : %s(%s)",
-                round_idx + 1, call["name"], call.get("args"),
+                "APPEL D'OUTIL : %s(%s)",
+                call["name"], call.get("args"),
             )
-            logger.info("llm (%d) — tool result : %s", round_idx + 1, content[:500])
+            logger.info("RÉSULTAT D'OUTIL : %s", content[:500])
             messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
     return resp
 
@@ -237,8 +242,8 @@ def draft_prompts_agent(
             f"\n\nIMPORTANT : effectue exactement {forced_searches} recherches avec les "
             f"outils (search_terms, list_categories ou random_term) avant de rédiger les prompts."
         )
-    logger.info("draft — system prompt :\n%s", system)
-    logger.info("draft — user prompt :\n%s", user)
+    logger.info("%s\n%s", _hr("SYSTEM — envoyé au LLM"), system)
+    logger.info("%s\n%s", _hr("USER — envoyé au LLM"), user)
 
     llm_with_tools = llm.bind_tools(tools) if tools else llm
     messages: list = [SystemMessage(content=system), HumanMessage(content=user)]
@@ -268,7 +273,11 @@ def draft_prompts_agent(
         refine = _build_refine_message(
             [p for _, p in short], min_words, style, tools[0] if tools else None
         )
-        logger.info("llm — raffinement (%d prompts courts) :\n%s", len(short), refine)
+        logger.info(
+            "%s\n%s",
+            _hr(f"HINT RAFFINEMENT — envoyé au LLM ({len(short)} prompts)"),
+            refine,
+        )
         messages.append(HumanMessage(content=refine))
         resp = _run_until_answer(llm_with_tools, tools, messages, tool_calls_log)
         if resp is None:

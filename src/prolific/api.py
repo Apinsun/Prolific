@@ -171,6 +171,13 @@ def build_api(
         orchestrator.stop(job_id)
         return {"status": "stopping"}
 
+    @router.post("/jobs/{job_id}/resume")
+    def resume_job(job_id: int) -> dict[str, str]:
+        if db.get_job(job_id) is None:
+            raise HTTPException(status_code=404, detail="job introuvable")
+        orchestrator.resume(job_id)
+        return {"status": "resuming"}
+
     @router.delete("/jobs/{job_id}/traces")
     def delete_job_traces(job_id: int) -> dict[str, str]:
         """Retire uniquement les traces (dataset de fine-tuning), garde le job.

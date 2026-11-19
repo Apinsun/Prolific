@@ -181,13 +181,11 @@ class RagIndex:
                 res = collection.get(where={"category": category}, include=["metadatas"])
                 metas = res.get("metadatas", [])
             else:
-                count = collection.count()
-                if count <= 0:
+                ids = collection.get(include=[])["ids"]
+                if not ids:
                     continue
-                offset = random.randint(0, max(0, count - 1))
-                res = collection.get(
-                    limit=min(k, count), offset=offset, include=["metadatas"]
-                )
+                sample_ids = random.sample(ids, min(k, len(ids)))
+                res = collection.get(ids=sample_ids, include=["metadatas"])
                 metas = res.get("metadatas", [])
             for meta in metas:
                 term = meta.get("term")

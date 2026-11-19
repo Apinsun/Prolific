@@ -120,7 +120,7 @@ button.danger { background: #d9534f; color: #fff; }
 .badge.running { background: #1d3a5f; color: #7cc0ff; }
 .badge.done { background: #1f3d2b; color: #7fe0a0; }
 .badge.failed { background: #3d1f1f; color: #ff8a8a; }
-.badge.stopped { background: #3d3520; color: #ffd08a; }
+.badge.paused { background: #3d3520; color: #ffd08a; }
 .badge.queued { background: #2a2f3a; color: #9fb0c8; }
 
 #job-detail h3 { margin: 0 0 8px; font-size: 15px; }
