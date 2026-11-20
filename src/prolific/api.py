@@ -32,6 +32,7 @@ class JobCreate(BaseModel):
     datasets: list[str] = []
     swap_vram: bool = False
     positive_suffix: str | None = None
+    positive_prefix: str | None = None
     negative: str | None = None
     temperature: float | None = None
     batch: int = 1
@@ -138,6 +139,7 @@ def build_api(
             swap_vram=payload.swap_vram,
             seed=payload.seed,
             positive_suffix=payload.positive_suffix,
+            positive_prefix=payload.positive_prefix,
             negative=payload.negative,
             temperature=payload.temperature,
             batch=payload.batch,

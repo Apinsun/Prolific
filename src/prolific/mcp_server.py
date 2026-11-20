@@ -111,6 +111,7 @@ def build_mcp(
         random_tags: bool = False,
         random_tags_count: int = 15,
         positive_suffix: str | None = None,
+        positive_prefix: str | None = None,
         negative: str | None = None,
         filename_prefix: str | None = None,
         draft_batch_size: int | None = None,
@@ -139,6 +140,7 @@ def build_mcp(
             random_tags: Injecter des termes aléatoires du RAG (si datasets sélectionnés).
             random_tags_count: Nombre de termes aléatoires proposés par prompt.
             positive_suffix: Texte concaténé au prompt positif.
+            positive_prefix: Texte concaténé au DÉBUT du prompt positif (ex. trigger de LoRA).
             negative: Prompt négatif (remplace celui du workflow).
             filename_prefix: Sous-dossier de sortie (relatif au output_dir ComfyUI).
             draft_batch_size: Taille max d'un lot de rédaction (None = tout en un appel).
@@ -174,6 +176,7 @@ def build_mcp(
             random_tags=random_tags,
             random_tags_count=random_tags_count,
             positive_suffix=positive_suffix,
+            positive_prefix=positive_prefix,
             negative=negative,
             filename_prefix=filename_prefix,
             draft_batch_size=draft_batch_size,

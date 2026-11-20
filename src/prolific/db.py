@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     swap_vram         INTEGER NOT NULL DEFAULT 0,
     seed              TEXT,
     positive_suffix   TEXT,
+    positive_prefix   TEXT,
     negative          TEXT,
     temperature       REAL,
     batch             INTEGER NOT NULL DEFAULT 1,
@@ -90,6 +91,7 @@ def serialize_job(row: dict[str, Any]) -> dict[str, Any]:
 # colonnes ajoutées après coup : migration légère pour les bases existantes
 _COLUMN_MIGRATIONS = [
     ("jobs", "positive_suffix", "TEXT"),
+    ("jobs", "positive_prefix", "TEXT"),
     ("jobs", "negative", "TEXT"),
     ("jobs", "temperature", "REAL"),
     ("jobs", "batch", "INTEGER NOT NULL DEFAULT 1"),
@@ -175,6 +177,7 @@ class Database:
         swap_vram: bool = False,
         seed: str | None = None,
         positive_suffix: str | None = None,
+        positive_prefix: str | None = None,
         negative: str | None = None,
         temperature: float | None = None,
         batch: int = 1,
@@ -195,11 +198,12 @@ class Database:
         return self._write(
             """INSERT INTO jobs
                (objective, theme, workflow, style, orientation, datasets,
-                swap_vram, seed, positive_suffix, negative, temperature, batch, min_words,
+                swap_vram, seed, positive_suffix, positive_prefix, negative, temperature,
+                batch, min_words,
                 random_tags, random_tags_count, model, filename_prefix, draft_batch_size,
                 enable_traces, preset, forced_searches, test_mode, random_datasets,
                 images_target, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 json.dumps(objective),
@@ -211,6 +215,7 @@ class Database:
                 int(swap_vram),
                 seed,
                 positive_suffix,
+                positive_prefix,
                 negative,
                 temperature,
                 batch,

@@ -235,18 +235,29 @@ def dedupe_tags(prompt: str) -> str:
     return ", ".join(tags)
 
 
-def compose_positive(positive: str, suffix: str | None, style: str = "tags") -> str:
-    """Concatène un suffixe au prompt positif (séparateur selon le style)."""
-    if not suffix:
-        return positive
-    suffix = suffix.strip().strip(",").strip()
-    if not suffix:
-        return positive
-    separator = " " if style == "prose" else ", "
-    result = f"{positive}{separator}{suffix}"
+def compose_positive(
+    positive: str,
+    suffix: str | None,
+    style: str = "tags",
+    prefix: str | None = None,
+) -> str:
+    """Assemble prompt + suffixe (dédoublonnés), puis préfixe ajouté en tête verbatim.
+
+    Le préfixe n'est volontairement pas dédoublonné : l'utilisateur peut y répéter
+    un trigger de LoRA (« laddybug_w0man, laddybug_w0man, ... ») à dessein.
+    """
+    suffix = (suffix or "").strip().strip(",").strip()
+    if suffix:
+        separator = " " if style == "prose" else ", "
+        positive = f"{positive}{separator}{suffix}"
     if style == "tags":
-        result = dedupe_tags(result)
-    return result
+        positive = dedupe_tags(positive)
+
+    prefix = (prefix or "").strip().strip(",").strip()
+    if prefix:
+        separator = " " if style == "prose" else ", "
+        positive = f"{prefix}{separator}{positive}"
+    return positive
 
 
 def normalize_draft_full(

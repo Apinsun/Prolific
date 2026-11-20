@@ -48,6 +48,7 @@ Remplissez le formulaire de l'UI :
 | Datasets RAG | cochez pour aider le LLM à trouver de vrais termes |
 | Mots aléatoires (RAG) | ajoute des termes variés (à cocher après un dataset) |
 | Suffixe positif / négatif | texte concaténé au prompt |
+| Préfixe positif | texte concaténé au **DÉBUT** du prompt (ex. trigger de LoRA, répété volontairement si besoin) |
 | Batch | **vrai batching** : N images générées en parallèle par prompt (1 envoi ComfyUI = N latents) |
 | Longueur min | force le LLM à enrichir les prompts trop courts |
 | Taille du lot de rédaction | découpe la rédaction en N prompts par appel LLM (vide = tout en un appel) |

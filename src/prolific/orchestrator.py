@@ -62,6 +62,7 @@ class OrchestratorState(TypedDict, total=False):
     model: str
     seed: int | None
     positive_suffix: str | None
+    positive_prefix: str | None
     negative: str | None
     temperature: float | None
     batch: int
@@ -381,7 +382,10 @@ class Orchestrator:
                     self.manifest, state["workflow"], orientation
                 )
                 positive = compose_positive(
-                    prompt, state.get("positive_suffix"), state.get("style", "tags")
+                    prompt,
+                    state.get("positive_suffix"),
+                    state.get("style", "tags"),
+                    prefix=state.get("positive_prefix"),
                 )
                 negative = state.get("negative")
 
@@ -588,6 +592,7 @@ class Orchestrator:
         seed: int | None = None,
         model: str | None = None,
         positive_suffix: str | None = None,
+        positive_prefix: str | None = None,
         negative: str | None = None,
         temperature: float | None = None,
         batch: int = 1,
@@ -620,6 +625,7 @@ class Orchestrator:
             swap_vram=swap_vram,
             seed=str(seed) if seed is not None else None,
             positive_suffix=positive_suffix,
+            positive_prefix=positive_prefix,
             negative=negative,
             temperature=temperature,
             batch=batch,
@@ -654,6 +660,7 @@ class Orchestrator:
             "model": model or self.config.llm.model,
             "seed": seed,
             "positive_suffix": positive_suffix,
+            "positive_prefix": positive_prefix,
             "negative": negative,
             "temperature": temperature,
             "batch": batch,

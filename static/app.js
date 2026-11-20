@@ -80,6 +80,7 @@ function formToPayload() {
     random_datasets: random_datasets.length ? random_datasets : null,
     swap_vram: $('#swap_vram').checked,
     positive_suffix: $('#positive_suffix').value.trim() || null,
+    positive_prefix: $('#positive_prefix').value.trim() || null,
     negative: $('#negative').value.trim() || null,
     filename_prefix: $('#filename_prefix').value.trim() || null,
     draft_batch_size: $('#draft_batch_size').value ? parseInt($('#draft_batch_size').value, 10) : null,
@@ -190,6 +191,7 @@ async function copyJobParams(id) {
   $('#swap_vram').checked = !!job.swap_vram;
   $('#enable_traces').checked = job.enable_traces == null ? true : !!job.enable_traces;
   $('#positive_suffix').value = job.positive_suffix ?? '';
+  $('#positive_prefix').value = job.positive_prefix ?? '';
   $('#negative').value = job.negative ?? '';
   $('#filename_prefix').value = job.filename_prefix ?? '';
   $('#draft_batch_size').value = job.draft_batch_size ?? '';
@@ -228,6 +230,7 @@ function renderJobParams(job) {
     ['Longueur min', fmt(job.min_words)],
     ['Mots aléatoires (RAG)', yn(job.random_tags)],
     ['Mots aléatoires (nb)', job.random_tags_count != null ? job.random_tags_count : 15],
+    ['Préfixe positif', fmt(job.positive_prefix)],
     ['Suffixe positif', fmt(job.positive_suffix)],
     ['Négatif', fmt(job.negative)],
     ['Température', job.temperature != null ? job.temperature : 'défaut du modèle'],
