@@ -46,7 +46,7 @@ Remplissez le formulaire de l'UI :
 | Dimensions | carré / paysage / portrait / aléatoire, ou **Auto** (le modèle choisit) |
 | Type de prompt | tags (danbooru) / langage naturel / les deux |
 | Datasets RAG | cochez pour aider le LLM à trouver de vrais termes |
-| Mots aléatoires (RAG) | ajoute des termes variés (à cocher après un dataset) |
+| Mots aléatoires (RAG) | automatique : actif dès qu'au moins un dataset est coché (recherche ou aléatoire) |
 | Suffixe positif / négatif | texte concaténé au prompt |
 | Préfixe positif | texte concaténé au **DÉBUT** du prompt (ex. trigger de LoRA, répété volontairement si besoin) |
 | Batch | **vrai batching** : N images générées en parallèle par prompt (1 envoi ComfyUI = N latents) |

@@ -48,18 +48,10 @@ async function loadConfig() {
     document.querySelectorAll('input[name="dataset"]:checked').length > 0 ||
     document.querySelectorAll('input[name="random_dataset"]:checked').length > 0;
   const refreshRandomState = () => {
-    const any = anyRandomSource();
-    $('#random_tags').disabled = !any;
-    if (!any) {
-      $('#random_tags').checked = false;
-      $('#random_tags_count').disabled = true;
-    } else {
-      $('#random_tags_count').disabled = !$('#random_tags').checked;
-    }
+    $('#random_tags_count').disabled = !anyRandomSource();
   };
   $('#datasets').addEventListener('change', refreshRandomState);
   $('#random_datasets').addEventListener('change', refreshRandomState);
-  $('#random_tags').addEventListener('change', refreshRandomState);
 }
 
 function formToPayload() {
@@ -87,7 +79,7 @@ function formToPayload() {
     temperature: $('#temperature').value ? parseFloat($('#temperature').value) : null,
     batch: parseInt($('#batch').value, 10) || 1,
     min_words: parseInt($('#min_words').value, 10) || 0,
-    random_tags: $('#random_tags').checked,
+    random_tags: datasets.length > 0 || random_datasets.length > 0,
     random_tags_count: parseInt($('#random_tags_count').value, 10) || 15,
     seed: $('#seed').value ? parseInt($('#seed').value, 10) : null,
     enable_traces: $('#enable_traces').checked,
@@ -182,11 +174,8 @@ async function copyJobParams(id) {
     c.checked = randomDatasets.includes(c.value);
   });
   $('#test_mode').checked = !!job.test_mode;
-  const hasRandom = !!job.random_tags && datasets.length > 0;
-  $('#random_tags').disabled = datasets.length === 0;
-  $('#random_tags').checked = hasRandom;
-  $('#random_tags_count').disabled = !hasRandom;
   $('#random_tags_count').value = job.random_tags_count ?? 15;
+  $('#random_tags_count').disabled = datasets.length === 0 && randomDatasets.length === 0;
 
   $('#swap_vram').checked = !!job.swap_vram;
   $('#enable_traces').checked = job.enable_traces == null ? true : !!job.enable_traces;

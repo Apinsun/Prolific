@@ -79,9 +79,8 @@
           <div id="random_datasets" class="checks"></div>
         </label>
 
-        <label class="inline"><input type="checkbox" id="random_tags" disabled> Mots aléatoires (RAG)</label>
-        <label>Nombre de mots aléatoires (par prompt)
-          <input type="number" id="random_tags_count" min="1" value="15" disabled title="Combien de termes aléatoires proposer par prompt (le LLM garde ceux qui sont cohérents)">
+        <label>Nombre de mots aléatoires (par prompt — actif dès qu'un dataset est coché)
+          <input type="number" id="random_tags_count" min="1" value="15" disabled title="Combien de termes aléatoires proposer par prompt (le LLM garde ceux qui sont cohérents). Actif automatiquement dès qu'au moins un dataset est sélectionné.">
         </label>
 
         <label>Préfixe positif (concaténé au DÉBUT du prompt — ex. trigger de LoRA)

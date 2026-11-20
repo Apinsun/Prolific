@@ -162,7 +162,8 @@ flowchart LR
 - Si `min_words` est fixé, les prompts trop courts sont enrichis (3 itérations max),
   avec suggestions RAG si un dataset est sélectionné.
 - `random_tags` injecte **15 termes aléatoires par prompt** (le LLM garde ceux qui sont
-  cohérents).
+  cohérents). Dans l'UI, il est actif automatiquement dès qu'un dataset est coché
+  (recherche ou aléatoire) ; l'API/MCP gardent le booléen explicite.
 
 ---
 
