@@ -138,6 +138,8 @@ class Orchestrator:
 
         self._stop_events: dict[int, threading.Event] = {}
         self._queue: queue.Queue[tuple[int, OrchestratorState | None]] = queue.Queue()
+        self._global_pause = threading.Event()
+        self._current_job_id: int | None = None
         conn = sqlite3.connect(checkpointer_path, check_same_thread=False)
         self._checkpointer = SqliteSaver(conn)
         self._checkpointer.setup()
@@ -737,9 +739,16 @@ class Orchestrator:
         return job_id
 
     def _worker_loop(self) -> None:
-        """Worker unique : dépile les jobs (FIFO) ; gère reprise et pause."""
+        """Worker unique : dépile les jobs (FIFO) ; gère reprise, pause et pause globale."""
         while True:
-            job_id, initial = self._queue.get()
+            if self._global_pause.is_set():
+                time.sleep(0.2)
+                continue
+            try:
+                job_id, initial = self._queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            self._current_job_id = job_id
             try:
                 is_resume = initial is None
                 if (not is_resume) and self._stop_events.get(job_id, threading.Event()).is_set():
@@ -759,6 +768,7 @@ class Orchestrator:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("worker — erreur sur le job %s : %s", job_id, exc)
             finally:
+                self._current_job_id = None
                 self._queue.task_done()
 
     def _run(self, job_id: int, initial: OrchestratorState | None) -> dict | None:
@@ -795,3 +805,24 @@ class Orchestrator:
             self.db.update_job(job_id, status="queued")
             self._queue.put((job_id, None))
             logger.info("job %s — reprise demandée", job_id)
+
+    def pause_all(self) -> None:
+        """Pause globale : gèle la file et met en pause le job en cours."""
+        self._global_pause.set()
+        current = self._current_job_id
+        if current is not None:
+            event = self._stop_events.get(current)
+            if event is not None:
+                event.set()
+        logger.info("pause globale demandée (job en cours : %s)", current)
+
+    def resume_all(self) -> None:
+        """Reprend tout : dégèle la file et remet en file les jobs en pause."""
+        self._global_pause.clear()
+        for job_id in list(self._stop_events.keys()):
+            job = self.db.get_job(job_id)
+            if job is not None and job["status"] == "paused":
+                self._stop_events[job_id].clear()
+                self.db.update_job(job_id, status="queued")
+                self._queue.put((job_id, None))
+        logger.info("reprise globale demandée")

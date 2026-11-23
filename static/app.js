@@ -404,6 +404,15 @@ document.querySelectorAll('input[name="objective_type"]').forEach((r) =>
 
 $('#refresh-btn').addEventListener('click', () => { refreshJobs(); if (currentJobId != null) loadJobDetail(currentJobId, { force: true }); });
 
+$('#pause-all-btn').addEventListener('click', async () => {
+  await fetch('/api/jobs/pause-all', { method: 'POST' });
+  refreshJobs();
+});
+$('#resume-all-btn').addEventListener('click', async () => {
+  await fetch('/api/jobs/resume-all', { method: 'POST' });
+  refreshJobs();
+});
+
 $('#jobs-search').addEventListener('input', () => {
   jobsSearch = $('#jobs-search').value.trim();
   clearTimeout(searchTimer);

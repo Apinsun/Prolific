@@ -184,6 +184,16 @@ def build_api(
         orchestrator.resume(job_id)
         return {"status": "resuming"}
 
+    @router.post("/jobs/pause-all")
+    def pause_all_jobs() -> dict[str, str]:
+        orchestrator.pause_all()
+        return {"status": "pausing_all"}
+
+    @router.post("/jobs/resume-all")
+    def resume_all_jobs() -> dict[str, str]:
+        orchestrator.resume_all()
+        return {"status": "resuming_all"}
+
     @router.delete("/jobs/{job_id}/traces")
     def delete_job_traces(job_id: int) -> dict[str, str]:
         """Retire uniquement les traces (dataset de fine-tuning), garde le job.
