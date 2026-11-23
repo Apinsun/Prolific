@@ -271,24 +271,32 @@ class Database:
         return rows, total
 
     def mark_interrupted(self) -> int:
-        """Marque les jobs restés 'running'/'pending' (orphelins) comme interrompus.
+        """Récupère les jobs orphelins au démarrage du service.
 
-        À appeler au démarrage du service : un job dont le thread est mort après un
-        arrêt du process ne doit pas rester 'running' indéfiniment.
+        - 'running' → 'paused' (le checkpoint permet de reprendre via resume/resume_all) ;
+        - 'pending' (jamais soumis) → 'stopped' ;
+        - 'queued' est conservé (repris par resume_all).
         """
         now = _now()
         with self._lock:
             conn = self._connect()
             try:
                 cur = conn.execute(
+                    "UPDATE jobs SET status = 'paused', "
+                    "error = 'interrompu (redémarrage du service)', "
+                    "updated_at = ? WHERE status = 'running'",
+                    (now,),
+                )
+                n = cur.rowcount
+                cur = conn.execute(
                     "UPDATE jobs SET status = 'stopped', "
                     "error = 'interrompu (redémarrage du service)', "
-                    "finished_at = ?, updated_at = ? "
-                    "WHERE status IN ('running', 'pending', 'queued')",
+                    "finished_at = ?, updated_at = ? WHERE status = 'pending'",
                     (now, now),
                 )
+                n += cur.rowcount
                 conn.commit()
-                return cur.rowcount
+                return n
             finally:
                 conn.close()
 

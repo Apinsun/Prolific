@@ -146,7 +146,6 @@ class Orchestrator:
         self._checkpointer = SqliteSaver(conn)
         self._checkpointer.setup()
         self._graph = self._build_graph()
-        self._recover_pending_jobs()
         self._worker = threading.Thread(
             target=self._worker_loop, daemon=True, name="job-worker"
         )
@@ -848,21 +847,6 @@ class Orchestrator:
             self._queue.appendleft((jid, initial))
             self._enqueued.add(jid)
         logger.info("reprise globale demandée (%d job(s) remis en file)", len(items))
-
-    def _recover_pending_jobs(self) -> None:
-        """Après un redémarrage, nettoie les jobs laissés en plan.
-
-        'running' → 'paused' (le worker est mort ; reprise possible via checkpoint).
-        'queued' et 'paused' restent tels quels : ils seront repris par resume_all().
-        """
-        for row in self.db.list_jobs(limit=100_000):
-            if row.get("status") == "running":
-                self.db.update_job(row["id"], status="paused")
-                self._stop_events[row["id"]] = threading.Event()
-                logger.info(
-                    "reprise à froid — job %s marqué 'paused' (il était 'running')",
-                    row["id"],
-                )
 
     def _state_from_row(self, row: dict[str, Any]) -> OrchestratorState:
         """Reconstruit l'état initial d'un job depuis sa ligne en base."""

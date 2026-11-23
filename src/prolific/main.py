@@ -34,7 +34,7 @@ def create_app() -> FastAPI:
     interrupted = db.mark_interrupted()
     if interrupted:
         logging.getLogger("prolific").info(
-            "%d job(s) interrompu(s) marqué(s) comme stoppé(s) au démarrage", interrupted
+            "%d job(s) récupéré(s) au démarrage (running→paused, pending→stopped)", interrupted
         )
     ollama = OllamaClient(config.llm.base_url)
     comfyui = ComfyUIClient(config.comfyui.url)
