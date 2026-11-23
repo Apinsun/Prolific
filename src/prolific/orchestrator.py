@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import logging
 import math
-import queue
 import random
 import sqlite3
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TypedDict
@@ -137,7 +137,7 @@ class Orchestrator:
         )
 
         self._stop_events: dict[int, threading.Event] = {}
-        self._queue: queue.Queue[tuple[int, OrchestratorState | None]] = queue.Queue()
+        self._queue: deque[tuple[int, OrchestratorState | None]] = deque()
         self._global_pause = threading.Event()
         self._current_job_id: int | None = None
         conn = sqlite3.connect(checkpointer_path, check_same_thread=False)
@@ -735,7 +735,7 @@ class Orchestrator:
         }
 
         self._stop_events[job_id] = threading.Event()
-        self._queue.put((job_id, initial))
+        self._queue.append((job_id, initial))
         return job_id
 
     def _worker_loop(self) -> None:
@@ -744,10 +744,10 @@ class Orchestrator:
             if self._global_pause.is_set():
                 time.sleep(0.2)
                 continue
-            try:
-                job_id, initial = self._queue.get(timeout=0.5)
-            except queue.Empty:
+            if not self._queue:
+                time.sleep(0.2)
                 continue
+            job_id, initial = self._queue.popleft()
             self._current_job_id = job_id
             try:
                 is_resume = initial is None
@@ -769,7 +769,6 @@ class Orchestrator:
                 logger.exception("worker — erreur sur le job %s : %s", job_id, exc)
             finally:
                 self._current_job_id = None
-                self._queue.task_done()
 
     def _run(self, job_id: int, initial: OrchestratorState | None) -> dict | None:
         run_config = {"configurable": {"thread_id": str(job_id)}}
@@ -803,7 +802,7 @@ class Orchestrator:
         job = self.db.get_job(job_id)
         if job is not None and job["status"] == "paused":
             self.db.update_job(job_id, status="queued")
-            self._queue.put((job_id, None))
+            self._queue.appendleft((job_id, None))
             logger.info("job %s — reprise demandée", job_id)
 
     def pause_all(self) -> None:
@@ -817,12 +816,15 @@ class Orchestrator:
         logger.info("pause globale demandée (job en cours : %s)", current)
 
     def resume_all(self) -> None:
-        """Reprend tout : dégèle la file et remet en file les jobs en pause."""
+        """Reprend tout : dégèle la file et remet en file les jobs en pause (au début)."""
         self._global_pause.clear()
-        for job_id in list(self._stop_events.keys()):
-            job = self.db.get_job(job_id)
-            if job is not None and job["status"] == "paused":
-                self._stop_events[job_id].clear()
-                self.db.update_job(job_id, status="queued")
-                self._queue.put((job_id, None))
-        logger.info("reprise globale demandée")
+        paused = sorted(
+            (job_id for job_id in self._stop_events
+             if (self.db.get_job(job_id) or {}).get("status") == "paused"),
+            reverse=True,
+        )
+        for job_id in paused:
+            self._stop_events[job_id].clear()
+            self.db.update_job(job_id, status="queued")
+            self._queue.appendleft((job_id, None))
+        logger.info("reprise globale demandée (%d job(s) remis en file)", len(paused))
