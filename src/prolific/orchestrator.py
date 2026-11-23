@@ -220,8 +220,8 @@ class Orchestrator:
         trace = self.trace_logger is not None and (
             state.get("enable_traces", True) or state.get("test_mode", False)
         )
-        batch_size = state.get("batch_size", 1)
-        if batch_size <= 0:
+        chunk_size = state.get("batch_size", 1)
+        if chunk_size <= 0:
             return {"prompts": [], "continue_loop": False}
 
         # le temps de rédaction compte dans le budget : on ne lance pas un lot
@@ -230,10 +230,7 @@ class Orchestrator:
         if deadline is not None and time.monotonic() >= deadline:
             return {"prompts": [], "continue_loop": False}
 
-        history = [
-            img["positive"] for img in self.db.list_images(state["job_id"])
-        ][-self.MAX_HISTORY :]
-
+        job_id = state["job_id"]
         datasets = state.get("datasets", [])
         tools = []
         if datasets:
@@ -243,102 +240,152 @@ class Orchestrator:
                 make_random_term_tool(self.rag, datasets),
             ]
         random_datasets = state.get("random_datasets") or datasets
-        random_terms: list[list[str]] = []
-        if state.get("random_tags") and random_datasets:
-            k = state.get("random_tags_count") or 15
-            random_terms = [
-                self.rag.random_terms(random_datasets, k=k) for _ in range(batch_size)
-            ]
         model = state.get("model") or self.config.llm.model
         temperature = state.get("temperature")  # None = défaut du modèle Ollama
         llm = self._llm_factory(model, temperature)
-        logger.info(
-            "job %s — rédaction de %d prompts (style=%s datasets=%s temp=%s random=%d)",
-            state["job_id"], batch_size, state.get("style"), datasets, temperature,
-            len(random_terms),
-        )
 
-        try:
-            prompts, orientations, tool_calls, conversation = draft_prompts_agent(
-                llm,
-                tools,
-                n=batch_size,
-                theme=state["theme"],
-                style=state.get("style", "tags"),
-                datasets=datasets,
-                history=history,
-                min_words=state.get("min_words", 0),
-                random_terms=random_terms,
-                prompts_dir=self.prompts_dir,
-                preset=state.get("preset"),
-                forced_searches=state.get("forced_searches", 0),
+        # Combien de prompts rédiger dans cette passe ?
+        #  - mode count : tout ce qui reste → on pré-rédige l'intégralité du job,
+        #    puis _generate enchaîne toutes les images en un seul cycle VRAM.
+        #  - mode durée : un seul chunk (adaptatif, le budget dépend de la vitesse).
+        objective = state.get("objective", {})
+        images_per_prompt = max(1, int(state.get("batch", 1)))
+        if objective.get("type") == "count":
+            target = state.get("target") or 0
+            remaining_images = max(0, target - state.get("generated", 0))
+            total_needed = math.ceil(remaining_images / images_per_prompt)
+        else:
+            total_needed = chunk_size
+
+        history = [
+            img["positive"] for img in self.db.list_images(job_id)
+        ][-self.MAX_HISTORY :]
+
+        all_prompts: list[str] = []
+        all_orientations: list[str | None] = []
+        stalled = state.get("stalled", 0)
+
+        while len(all_prompts) < total_needed:
+            n_chunk = min(chunk_size, total_needed - len(all_prompts))
+            if n_chunk <= 0:
+                break
+
+            random_terms: list[list[str]] = []
+            if state.get("random_tags") and random_datasets:
+                k = state.get("random_tags_count") or 15
+                random_terms = [
+                    self.rag.random_terms(random_datasets, k=k)
+                    for _ in range(n_chunk)
+                ]
+            logger.info(
+                "job %s — rédaction de %d prompts (style=%s datasets=%s temp=%s random=%d)",
+                job_id, n_chunk, state.get("style"), datasets, temperature,
+                len(random_terms),
             )
-        except Exception as exc:  # noqa: BLE001 — on capture tout pour tracer le job
-            logger.error("job %s — échec de la rédaction : %s", state["job_id"], exc)
-            return {
-                "error": f"Échec de la rédaction : {exc}",
-                "status": "failed",
-                "continue_loop": False,
-            }
 
-        # dédoublonnage en préservant l'alignement prompts/orientations
-        seen = set(history)
-        kept_prompts: list[str] = []
-        kept_orientations: list[str | None] = []
-        for p, o in zip(prompts, orientations):
-            if p in seen:
-                continue
-            seen.add(p)
-            kept_prompts.append(p)
-            kept_orientations.append(o)
-        prompts = kept_prompts
-        orientations = kept_orientations
+            try:
+                prompts, orientations, tool_calls, conversation = draft_prompts_agent(
+                    llm,
+                    tools,
+                    n=n_chunk,
+                    theme=state["theme"],
+                    style=state.get("style", "tags"),
+                    datasets=datasets,
+                    history=history,
+                    min_words=state.get("min_words", 0),
+                    random_terms=random_terms,
+                    prompts_dir=self.prompts_dir,
+                    preset=state.get("preset"),
+                    forced_searches=state.get("forced_searches", 0),
+                )
+            except Exception as exc:  # noqa: BLE001
+                if all_prompts:
+                    logger.warning(
+                        "job %s — échec rédaction d'un chunk (on garde %d prompts) : %s",
+                        job_id, len(all_prompts), exc,
+                    )
+                    break
+                logger.error("job %s — échec de la rédaction : %s", job_id, exc)
+                return {
+                    "error": f"Échec de la rédaction : {exc}",
+                    "status": "failed",
+                    "continue_loop": False,
+                }
 
-        logger.info(
-            "job %s — %d prompts retenus après dédoublonnage", state["job_id"], len(prompts)
-        )
-        for i, (p, o) in enumerate(zip(prompts, orientations), 1):
-            logger.info("job %s — prompt %d [%s] : %s", state["job_id"], i, o or "?", p)
-        if trace:
-            self.trace_logger.log_draft(
-                job_id=state["job_id"],
-                theme=state["theme"],
-                style=state.get("style"),
-                datasets=datasets,
-                n=batch_size,
-                temperature=temperature,
-                model=model,
-                orientation=state.get("orientation"),
-                prompts=prompts,
-                orientations=orientations,
-                tool_calls=tool_calls,
-                conversation=conversation,
-                test_mode=state.get("test_mode", False),
+            # dédoublonnage en préservant l'alignement prompts/orientations
+            seen = set(history)
+            kept_prompts: list[str] = []
+            kept_orientations: list[str | None] = []
+            for p, o in zip(prompts, orientations):
+                if p in seen:
+                    continue
+                seen.add(p)
+                kept_prompts.append(p)
+                kept_orientations.append(o)
+            prompts = kept_prompts
+            orientations = kept_orientations
+
+            logger.info(
+                "job %s — %d prompts retenus après dédoublonnage", job_id, len(prompts)
             )
-        if trace and state.get("test_mode"):
-            errors = [
-                {"name": tc.get("name"), "args": tc.get("args"), "error": tc.get("result")}
-                for tc in tool_calls
-                if tc.get("result", "").startswith(("Erreur de l'outil", "Outil inconnu"))
-            ]
-            self.trace_logger.log_metric({
-                "timestamp": _now(),
-                "job_id": state["job_id"],
-                "theme": state["theme"],
-                "style": state.get("style"),
-                "model": model,
-                "n_requested": batch_size,
-                "n_returned": len(prompts),
-                "tool_call_count": len(tool_calls),
-                "tool_call_errors": errors,
-            })
-        if not prompts and batch_size > 0:
+            for i, (p, o) in enumerate(zip(prompts, orientations), 1):
+                logger.info(
+                    "job %s — prompt %d [%s] : %s", job_id, i, o or "?", p
+                )
+            if trace:
+                self.trace_logger.log_draft(
+                    job_id=job_id,
+                    theme=state["theme"],
+                    style=state.get("style"),
+                    datasets=datasets,
+                    n=n_chunk,
+                    temperature=temperature,
+                    model=model,
+                    orientation=state.get("orientation"),
+                    prompts=prompts,
+                    orientations=orientations,
+                    tool_calls=tool_calls,
+                    conversation=conversation,
+                    test_mode=state.get("test_mode", False),
+                )
+            if trace and state.get("test_mode"):
+                errors = [
+                    {"name": tc.get("name"), "args": tc.get("args"), "error": tc.get("result")}
+                    for tc in tool_calls
+                    if tc.get("result", "").startswith(("Erreur de l'outil", "Outil inconnu"))
+                ]
+                self.trace_logger.log_metric({
+                    "timestamp": _now(),
+                    "job_id": job_id,
+                    "theme": state["theme"],
+                    "style": state.get("style"),
+                    "model": model,
+                    "n_requested": n_chunk,
+                    "n_returned": len(prompts),
+                    "tool_call_count": len(tool_calls),
+                    "tool_call_errors": errors,
+                })
+
+            if not prompts:
+                stalled += 1
+                break
+
+            all_prompts.extend(prompts)
+            all_orientations.extend(orientations)
+            history = (history + prompts)[-self.MAX_HISTORY :]
+            stalled = 0
+
+        if not all_prompts and total_needed > 0:
             return {
                 "prompts": [],
                 "orientations": [],
-                "stalled": state.get("stalled", 0) + 1,
+                "stalled": stalled,
             }
-        return {"prompts": prompts, "orientations": orientations, "stalled": 0}
+        return {
+            "prompts": all_prompts,
+            "orientations": all_orientations,
+            "stalled": stalled,
+        }
 
     def _generate(self, state: OrchestratorState) -> dict:
         if state.get("error"):
