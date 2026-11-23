@@ -756,7 +756,7 @@ class Orchestrator:
             self._current_job_id = job_id
             try:
                 is_resume = initial is None
-                if (not is_resume) and self._stop_events.get(job_id, threading.Event()).is_set():
+                if self._stop_events.get(job_id, threading.Event()).is_set():
                     self.db.update_job(
                         job_id, status="stopped", error="arrêté avant exécution",
                         finished_at=_now(),
