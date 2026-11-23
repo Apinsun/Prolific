@@ -269,6 +269,13 @@ class Orchestrator:
         all_orientations: list[str | None] = []
         stalled = state.get("stalled", 0)
 
+        # libère la VRAM de ComfyUI pour laisser la place au LLM (cycle swap)
+        if state.get("swap_vram"):
+            try:
+                self.comfyui.free_vram()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("job %s — free_vram ignoré : %s", job_id, exc)
+
         while len(all_prompts) < total_needed:
             n_chunk = min(chunk_size, total_needed - len(all_prompts))
             if n_chunk <= 0:
