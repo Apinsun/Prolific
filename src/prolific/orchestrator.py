@@ -15,6 +15,7 @@ Le graphe est synchrone ; un worker unique dépile les jobs (FIFO) en arrière-p
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import random
@@ -140,10 +141,12 @@ class Orchestrator:
         self._queue: deque[tuple[int, OrchestratorState | None]] = deque()
         self._global_pause = threading.Event()
         self._current_job_id: int | None = None
+        self._enqueued: set[int] = set()
         conn = sqlite3.connect(checkpointer_path, check_same_thread=False)
         self._checkpointer = SqliteSaver(conn)
         self._checkpointer.setup()
         self._graph = self._build_graph()
+        self._recover_pending_jobs()
         self._worker = threading.Thread(
             target=self._worker_loop, daemon=True, name="job-worker"
         )
@@ -736,6 +739,7 @@ class Orchestrator:
 
         self._stop_events[job_id] = threading.Event()
         self._queue.append((job_id, initial))
+        self._enqueued.add(job_id)
         return job_id
 
     def _worker_loop(self) -> None:
@@ -748,6 +752,7 @@ class Orchestrator:
                 time.sleep(0.2)
                 continue
             job_id, initial = self._queue.popleft()
+            self._enqueued.discard(job_id)
             self._current_job_id = job_id
             try:
                 is_resume = initial is None
@@ -803,6 +808,7 @@ class Orchestrator:
         if job is not None and job["status"] == "paused":
             self.db.update_job(job_id, status="queued")
             self._queue.appendleft((job_id, None))
+            self._enqueued.add(job_id)
             logger.info("job %s — reprise demandée", job_id)
 
     def pause_all(self) -> None:
@@ -816,15 +822,88 @@ class Orchestrator:
         logger.info("pause globale demandée (job en cours : %s)", current)
 
     def resume_all(self) -> None:
-        """Reprend tout : dégèle la file et remet en file les jobs en pause (au début)."""
+        """Reprend tout : dégèle la file et remet en file jobs 'paused' et 'queued'.
+
+        Interroge la base (pas la file en mémoire) pour survivre à un redémarrage.
+        Les jobs 'paused' reprennent via leur checkpoint, les 'queued' via leur état
+        reconstruit depuis la base.
+        """
         self._global_pause.clear()
-        paused = sorted(
-            (job_id for job_id in self._stop_events
-             if (self.db.get_job(job_id) or {}).get("status") == "paused"),
-            reverse=True,
-        )
-        for job_id in paused:
-            self._stop_events[job_id].clear()
-            self.db.update_job(job_id, status="queued")
-            self._queue.appendleft((job_id, None))
-        logger.info("reprise globale demandée (%d job(s) remis en file)", len(paused))
+        rows = sorted(self.db.list_jobs(limit=100_000), key=lambda r: r["id"])
+        items: list[tuple[int, OrchestratorState | None]] = []
+        for row in rows:
+            jid = row["id"]
+            status = row.get("status")
+            if status == "paused":
+                items.append((jid, None))
+            elif status == "queued" and jid not in self._enqueued:
+                items.append((jid, self._state_from_row(row)))
+            else:
+                continue
+            if jid not in self._stop_events:
+                self._stop_events[jid] = threading.Event()
+            self._stop_events[jid].clear()
+            self.db.update_job(jid, status="queued")
+        for jid, initial in reversed(items):
+            self._queue.appendleft((jid, initial))
+            self._enqueued.add(jid)
+        logger.info("reprise globale demandée (%d job(s) remis en file)", len(items))
+
+    def _recover_pending_jobs(self) -> None:
+        """Après un redémarrage, nettoie les jobs laissés en plan.
+
+        'running' → 'paused' (le worker est mort ; reprise possible via checkpoint).
+        'queued' et 'paused' restent tels quels : ils seront repris par resume_all().
+        """
+        for row in self.db.list_jobs(limit=100_000):
+            if row.get("status") == "running":
+                self.db.update_job(row["id"], status="paused")
+                self._stop_events[row["id"]] = threading.Event()
+                logger.info(
+                    "reprise à froid — job %s marqué 'paused' (il était 'running')",
+                    row["id"],
+                )
+
+    def _state_from_row(self, row: dict[str, Any]) -> OrchestratorState:
+        """Reconstruit l'état initial d'un job depuis sa ligne en base."""
+        def _json(value: Any) -> Any:
+            if isinstance(value, str):
+                try:
+                    return json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            return None
+
+        seed_raw = row.get("seed")
+        try:
+            seed = int(seed_raw) if seed_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            seed = None
+
+        return {
+            "job_id": row["id"],
+            "objective": _json(row.get("objective")) or {},
+            "theme": row.get("theme") or "",
+            "workflow": row.get("workflow") or "",
+            "style": row.get("style"),
+            "orientation": row.get("orientation") or "carre",
+            "datasets": _json(row.get("datasets")) or [],
+            "swap_vram": bool(row.get("swap_vram")),
+            "model": row.get("model"),
+            "seed": seed,
+            "positive_suffix": row.get("positive_suffix"),
+            "positive_prefix": row.get("positive_prefix"),
+            "negative": row.get("negative"),
+            "temperature": row.get("temperature"),
+            "batch": int(row.get("batch") or 1),
+            "min_words": int(row.get("min_words") or 0),
+            "random_tags": bool(row.get("random_tags")),
+            "random_tags_count": int(row.get("random_tags_count") or 15),
+            "filename_prefix": row.get("filename_prefix"),
+            "draft_batch_size": row.get("draft_batch_size"),
+            "enable_traces": bool(row.get("enable_traces", True)),
+            "preset": row.get("preset"),
+            "forced_searches": int(row.get("forced_searches") or 0),
+            "test_mode": bool(row.get("test_mode")),
+            "random_datasets": _json(row.get("random_datasets")) or [],
+        }
