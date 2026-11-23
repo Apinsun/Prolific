@@ -12,16 +12,20 @@ Colonnes (dans n'importe quel ordre) :
 |---------|--------|-------------|
 | `term` (ou `tag`) | oui | le terme exact, ex. `corset`, `goggles` |
 | `definition` (ou `description`) | oui | une courte définition |
-| `category` | non | ex. `vêtement`, `accessoire`, `angle de caméra` |
+| `category` | non | une ou plusieurs catégories, séparées par `\|` ou `;` |
 
 Exemple (`datasets/vetements.csv`) :
 
 ```csv
 term,definition,category
-kimono,longue robe traditionnelle japonaise,vêtement
-obi,large ceinture portée avec le kimono,vêtement
+kimono,longue robe traditionnelle japonaise,vêtement|traditionnel
+obi,large ceinture portée avec le kimono,vêtement;accessoire
 goggles,lunettes de protection,accessoire
 ```
+
+Un terme peut donc appartenir à **plusieurs catégories** (`vêtement|traditionnel`).
+Il apparaîtra dans les recherches filtrées de chacune, et les tirages aléatoires
+(`random_term`) le renverront une seule fois.
 
 ## Étapes
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import json
 import random
+import re
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +53,7 @@ class RagIndex:
 
         name = self._collection_name(dataset)
         self._drop_collection(name)
-        distinct_categories = sorted({c for c in categories if c})
+        distinct_categories = sorted({c for cats in categories for c in cats})
         collection = self.client.create_collection(
             name=name,
             metadata={
@@ -67,14 +68,17 @@ class RagIndex:
             batch_cats = categories[i : i + batch_size]
             texts = [f"{t}: {d}" for t, d in zip(batch_terms, batch_defs)]
             embeddings = self.ollama.embed(self.embed_model, texts)
+            metadatas = []
+            for t, c in zip(batch_terms, batch_cats):
+                meta: dict[str, Any] = {"term": t, "dataset": dataset}
+                if c:
+                    meta["category"] = c
+                metadatas.append(meta)
             collection.add(
                 ids=[f"{dataset}_{j}" for j in range(i, i + len(batch_terms))],
                 embeddings=embeddings,
                 documents=batch_defs,
-                metadatas=[
-                    {"term": t, "category": c, "dataset": dataset}
-                    for t, c in zip(batch_terms, batch_cats)
-                ],
+                metadatas=metadatas,
             )
 
         return len(terms)
@@ -111,7 +115,7 @@ class RagIndex:
                 continue  # dataset non indexé : on l'ignore
             kwargs: dict[str, Any] = {}
             if category:
-                kwargs["where"] = {"category": category}
+                kwargs["where"] = {"category": {"$contains": category}}
             hit = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=min(top_k * 2, 100),
@@ -168,7 +172,7 @@ class RagIndex:
         k: int = 5,
         category: str | None = None,
     ) -> list[str]:
-        """Tire jusqu'à k termes aléatoires (optionnellement dans une catégorie)."""
+        """Tire jusqu'à k termes distincts (optionnellement dans une catégorie)."""
         if datasets is None:
             datasets = self.list_datasets()
         terms: list[str] = []
@@ -178,7 +182,9 @@ class RagIndex:
             except Exception:
                 continue
             if category:
-                res = collection.get(where={"category": category}, include=["metadatas"])
+                res = collection.get(
+                    where={"category": {"$contains": category}}, include=["metadatas"]
+                )
                 metas = res.get("metadatas", [])
             else:
                 ids = collection.get(include=[])["ids"]
@@ -189,17 +195,33 @@ class RagIndex:
                 metas = res.get("metadatas", [])
             for meta in metas:
                 term = meta.get("term")
-                if term:
+                if term and term not in terms:
                     terms.append(term)
         random.shuffle(terms)
         return terms[:k]
 
     @staticmethod
-    def _load_csv(csv_path: Path) -> tuple[list[str], list[str], list[str]]:
-        """Lit un CSV et accepte les variantes term/tag et definition/description."""
+    def _split_categories(value: Any) -> list[str]:
+        """Découpe une valeur 'a|b;c' en catégories distinctes non vides."""
+        cats: list[str] = []
+        seen: set[str] = set()
+        for part in re.split(r"[|;]", _clean(value)):
+            c = part.strip()
+            if c and c not in seen:
+                seen.add(c)
+                cats.append(c)
+        return cats
+
+    @staticmethod
+    def _load_csv(csv_path: Path) -> tuple[list[str], list[str], list[list[str]]]:
+        """Lit un CSV et accepte les variantes term/tag et definition/description.
+
+        La colonne `category` peut contenir plusieurs catégories séparées par `|`
+        (ou `;`) : ex. `vêtement|traditionnel`.
+        """
         terms: list[str] = []
         definitions: list[str] = []
-        categories: list[str] = []
+        categories: list[list[str]] = []
         with csv_path.open(encoding="utf-8", newline="") as f:
             for row in csv.DictReader(f):
                 term = _clean(row.get("term") or row.get("tag"))
@@ -208,11 +230,11 @@ class RagIndex:
                     or row.get("description")
                     or row.get("description_propre")
                 )
-                category = _clean(row.get("category"))
+                cats = RagIndex._split_categories(row.get("category"))
                 if term and definition:
                     terms.append(term)
                     definitions.append(definition)
-                    categories.append(category)
+                    categories.append(cats)
         return terms, definitions, categories
 
     def _drop_collection(self, name: str) -> None:
