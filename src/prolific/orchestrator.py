@@ -173,6 +173,12 @@ class Orchestrator:
 
     # ── nœuds ─────────────────────────────────────────────────────────
     def _plan(self, state: OrchestratorState) -> dict:
+        if not self.comfyui.is_online():
+            return {
+                "error": f"ComfyUI injoignable ({self.comfyui.url})",
+                "status": "failed",
+                "continue_loop": False,
+            }
         objective = state["objective"]
         now = time.monotonic()
 
@@ -518,7 +524,10 @@ class Orchestrator:
                             )
         finally:
             if swap:
-                self.comfyui.free_vram()
+                try:
+                    self.comfyui.free_vram()
+                except Exception as exc:  # noqa: BLE001 — ComfyUI peut être tombé
+                    logger.warning("job %s — libération VRAM impossible : %s", job_id, exc)
 
         return {
             "generated": generated,
