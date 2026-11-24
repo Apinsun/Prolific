@@ -20,7 +20,9 @@ def make_search_terms_tool(rag: RagIndex, datasets: list[str]) -> Callable:
         Args:
             concept: Concept ou description en langage naturel à rechercher.
             top_k: Nombre maximum de résultats à renvoyer.
-            category: Catégorie optionnelle pour filtrer (voir list_categories).
+            category: Catégorie EXACTE à filtrer — appelle d'abord list_categories pour
+                connaître les catégories valides (ex. 'Haut', 'Posture', 'Position').
+                Si incertain, OMETS ce paramètre (recherche sans filtre).
 
         Returns:
             Chaîne JSON : liste de {term, definition, category, dataset, similarity}.
@@ -56,7 +58,7 @@ def make_random_term_tool(rag: RagIndex, datasets: list[str]) -> Callable:
         """Tire des termes aléatoires (dans une catégorie si précisée).
 
         Args:
-            category: Catégorie optionnelle (voir list_categories).
+            category: Catégorie EXACTE (voir list_categories). Si incertain, omets-la.
             count: Nombre de termes à tirer.
 
         Returns:

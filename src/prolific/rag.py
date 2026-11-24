@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import random
 import re
 from pathlib import Path
@@ -16,6 +17,8 @@ from typing import Any
 import chromadb
 
 from prolific.clients.ollama import OllamaClient
+
+logger = logging.getLogger(__name__)
 
 
 class RagError(Exception):
@@ -101,43 +104,53 @@ class RagIndex:
         threshold: float = 0.3,
         category: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Recherche un concept (optionnellement filtré par catégorie)."""
+        """Recherche un concept (optionnellement filtré par catégorie).
+
+        Si la catégorie ne donne rien (ex. un nom de dataset passé au lieu d'une vraie
+        catégorie), on replie sur une recherche sans filtre pour ne pas renvoyer vide.
+        """
         query_embedding = self.ollama.embed(self.embed_model, [concept])[0]
 
         if datasets is None:
             datasets = self.list_datasets()
 
-        results: list[dict[str, Any]] = []
-        for dataset in datasets:
-            try:
-                collection = self.client.get_collection(self._collection_name(dataset))
-            except Exception:
-                continue  # dataset non indexé : on l'ignore
-            kwargs: dict[str, Any] = {}
-            if category:
-                kwargs["where"] = {"category": {"$contains": category}}
-            hit = collection.query(
-                query_embeddings=[query_embedding],
-                n_results=min(top_k * 2, 100),
-                include=["documents", "metadatas", "distances"],
-                **kwargs,
-            )
-            for i in range(len(hit["ids"][0])):
-                meta = hit["metadatas"][0][i]
-                similarity = 1.0 - hit["distances"][0][i]
-                if similarity >= threshold:
-                    results.append(
-                        {
-                            "term": meta.get("term", ""),
-                            "definition": hit["documents"][0][i],
-                            "category": meta.get("category") or None,
-                            "dataset": dataset,
-                            "similarity": round(similarity, 4),
-                        }
-                    )
+        def run(filter_category: str | None) -> list[dict[str, Any]]:
+            results: list[dict[str, Any]] = []
+            for dataset in datasets:
+                try:
+                    collection = self.client.get_collection(self._collection_name(dataset))
+                except Exception:
+                    continue  # dataset non indexé : on l'ignore
+                kwargs: dict[str, Any] = {}
+                if filter_category:
+                    kwargs["where"] = {"category": {"$contains": filter_category}}
+                hit = collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=min(top_k * 2, 100),
+                    include=["documents", "metadatas", "distances"],
+                    **kwargs,
+                )
+                for i in range(len(hit["ids"][0])):
+                    meta = hit["metadatas"][0][i]
+                    similarity = 1.0 - hit["distances"][0][i]
+                    if similarity >= threshold:
+                        results.append(
+                            {
+                                "term": meta.get("term", ""),
+                                "definition": hit["documents"][0][i],
+                                "category": meta.get("category") or None,
+                                "dataset": dataset,
+                                "similarity": round(similarity, 4),
+                            }
+                        )
+            results.sort(key=lambda r: r["similarity"], reverse=True)
+            return results[:top_k]
 
-        results.sort(key=lambda r: r["similarity"], reverse=True)
-        return results[:top_k]
+        results = run(category)
+        if not results and category:
+            logger.info("catégorie %r sans résultat — repli sans filtre", category)
+            results = run(None)
+        return results
 
     # ── utilitaires ─────────────────────────────────────────────────────
     def list_datasets(self) -> list[str]:
@@ -166,6 +179,24 @@ class RagIndex:
                 pass
         return sorted(cats)
 
+    @staticmethod
+    def _sample_metas(collection: Any, k: int, category: str | None) -> list[dict]:
+        """Échantillonne des métadonnées : par catégorie si possible, sinon au hasard."""
+        if category:
+            res = collection.get(
+                where={"category": {"$contains": category}}, include=["metadatas"]
+            )
+            metas = res.get("metadatas", [])
+            if metas:
+                random.shuffle(metas)
+                return metas[:k]
+        ids = collection.get(include=[])["ids"]
+        if not ids:
+            return []
+        sample_ids = random.sample(ids, min(k, len(ids)))
+        res = collection.get(ids=sample_ids, include=["metadatas"])
+        return res.get("metadatas", [])
+
     def random_terms(
         self,
         datasets: list[str] | None = None,
@@ -181,19 +212,7 @@ class RagIndex:
                 collection = self.client.get_collection(self._collection_name(dataset))
             except Exception:
                 continue
-            if category:
-                res = collection.get(
-                    where={"category": {"$contains": category}}, include=["metadatas"]
-                )
-                metas = res.get("metadatas", [])
-            else:
-                ids = collection.get(include=[])["ids"]
-                if not ids:
-                    continue
-                sample_ids = random.sample(ids, min(k, len(ids)))
-                res = collection.get(ids=sample_ids, include=["metadatas"])
-                metas = res.get("metadatas", [])
-            for meta in metas:
+            for meta in self._sample_metas(collection, k, category):
                 term = meta.get("term")
                 if term and term not in terms:
                     terms.append(term)
