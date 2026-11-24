@@ -129,11 +129,11 @@ class Orchestrator:
         self.prompts_dir = prompts_dir
         self.trace_logger = trace_logger
         self._llm_factory = llm_factory or (
-            lambda model, temperature: ChatOllama(
+            lambda model, temperature, reasoning=True: ChatOllama(
                 model=model,
                 base_url=self.config.llm.base_url,
                 temperature=temperature,
-                reasoning=True,  # capture le raisonnement dans additional_kwargs
+                reasoning=reasoning,  # capture le raisonnement dans additional_kwargs
             )
         )
 
@@ -218,6 +218,58 @@ class Orchestrator:
             "status": "running",
         }
 
+    def _draft_chunk(
+        self,
+        llm: Any,
+        tools: list,
+        *,
+        n_chunk: int,
+        state: OrchestratorState,
+        history: list[str],
+        datasets: list[str],
+        random_terms: list[list[str]],
+    ):
+        """Rédige un chunk, en repliant sur un LLM sans reasoning si le modèle ne pense pas."""
+        try:
+            return draft_prompts_agent(
+                llm,
+                tools,
+                n=n_chunk,
+                theme=state["theme"],
+                style=state.get("style", "tags"),
+                datasets=datasets,
+                history=history,
+                min_words=state.get("min_words", 0),
+                random_terms=random_terms,
+                prompts_dir=self.prompts_dir,
+                preset=state.get("preset"),
+                forced_searches=state.get("forced_searches", 0),
+            )
+        except Exception as exc:  # noqa: BLE001
+            if "does not support thinking" not in str(exc):
+                raise
+            logger.info(
+                "job %s — modèle sans thinking : nouvel essai sans reasoning",
+                state.get("job_id"),
+            )
+            model = state.get("model") or self.config.llm.model
+            temperature = state.get("temperature")
+            llm2 = self._llm_factory(model, temperature, reasoning=False)
+            return draft_prompts_agent(
+                llm2,
+                tools,
+                n=n_chunk,
+                theme=state["theme"],
+                style=state.get("style", "tags"),
+                datasets=datasets,
+                history=history,
+                min_words=state.get("min_words", 0),
+                random_terms=random_terms,
+                prompts_dir=self.prompts_dir,
+                preset=state.get("preset"),
+                forced_searches=state.get("forced_searches", 0),
+            )
+
     def _draft(self, state: OrchestratorState) -> dict:
         if state.get("error"):
             return {}
@@ -295,19 +347,9 @@ class Orchestrator:
             )
 
             try:
-                prompts, orientations, tool_calls, conversation = draft_prompts_agent(
-                    llm,
-                    tools,
-                    n=n_chunk,
-                    theme=state["theme"],
-                    style=state.get("style", "tags"),
-                    datasets=datasets,
-                    history=history,
-                    min_words=state.get("min_words", 0),
-                    random_terms=random_terms,
-                    prompts_dir=self.prompts_dir,
-                    preset=state.get("preset"),
-                    forced_searches=state.get("forced_searches", 0),
+                prompts, orientations, tool_calls, conversation = self._draft_chunk(
+                    llm, tools, n_chunk=n_chunk, state=state, history=history,
+                    datasets=datasets, random_terms=random_terms,
                 )
             except Exception as exc:  # noqa: BLE001
                 if all_prompts:
