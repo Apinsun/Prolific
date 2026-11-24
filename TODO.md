@@ -1,28 +1,18 @@
 # TODO
 
-## Vraie reprise d'un job arrêté
+## ✅ Fait — reprise d'un job en pause
 
-**État** : non implémenté.
+La vraie reprise est implémentée :
 
-Aujourd'hui, « Arrêter » pose un drapeau : le job termine l'image en cours, vide la
-file, et passe en `stopped`. Il n'y a **pas de reprise possible** après coup.
-
-**Ce que la vraie reprise implique :**
-
-1. **Stop interruptible** : remplacer le drapeau (`threading.Event`) par
-   l'`interrupt()` natif de LangGraph, pour que le graphe se mette **en pause sur un
-   point propre** (entre deux images ou entre deux lots) au lieu de simplement s'arrêter.
-2. **Reprise** : ajouter un endpoint/bouton `resume` qui rappelle
-   `graph.invoke(None, config={"configurable": {"thread_id": str(job_id)}})` — LangGraph
-   repart alors du dernier checkpoint.
-3. **Idempotence du nœud `generate`** : ne pas régénérer les images déjà produites
-   (se baser sur `images_done` / les lignes déjà présentes en base).
-4. **Statut `paused`** distinct de `stopped`, et gestion du cycle de vie
-   interrupt → resume dans l'API et l'UI.
-
-**Impact** : changement du modèle d'exécution (thread + Event → graphe interruptible
-avec reprise), et de la machine à états des statuts
-(`running / paused / done / stopped / failed`).
+- **Pause** : `interrupt()` LangGraph entre deux images → statut `paused`.
+- **Reprise** : `POST /api/jobs/{id}/resume` (et bouton UI) → `graph.invoke(None,
+  thread_id=job_id)` depuis le checkpoint.
+- **Idempotence** : `generate` repart de `images_done` (pas de doublons).
+- **Pause/reprise globale** : boutons « Tout en pause » / « Tout reprendre »
+  (`/api/jobs/pause-all`, `/api/jobs/resume-all`) ; la file survit au redémarrage
+  (reconstruction de l'état depuis la base).
+- **Pré-rédaction** : en mode `count`, tous les prompts sont rédigés avant de générer
+  (un seul cycle VRAM).
 
 ## Autres pistes
 
@@ -30,4 +20,8 @@ avec reprise), et de la machine à états des statuts
 - Réglage du seuil de similarité du RAG (actuellement 0.3).
 - Wrapper MCP en stdio (en plus du HTTP), pour les outils qui l'exigent.
 - Navigation du lightbox à la molette / tactile (en plus des flèches et boutons).
-- Re-rendu incrémental des vignettes pendant la génération (éviter le re-rendu complet).
+- Re-rendu incrémental des vignettes pendant la génération.
+- Validation des tags rédigés contre l'index danbooru (signaler les tags hallucinés).
+- Servir les images depuis Prolific (pour que les miniatures marchent sans ComfyUI).
+- Jobs de rédaction parallèles (le worker est unique ; la génération reste limitée
+  par la VRAM, mais la rédaction de plusieurs jobs pourrait tourner en parallèle).

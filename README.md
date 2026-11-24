@@ -45,21 +45,27 @@ Remplissez le formulaire de l'UI :
 | Objectif | nombre de prompts, ou durée en minutes |
 | Dimensions | carré / paysage / portrait / aléatoire, ou **Auto** (le modèle choisit) |
 | Type de prompt | tags (danbooru) / langage naturel / les deux |
+| Prompt de base (preset) | system prompt alternatif (voir `prompts/presets/`, ex. `cascade`) |
 | Datasets RAG | cochez pour aider le LLM à trouver de vrais termes |
+| Datasets pour l'aléatoire | où piocher les termes aléatoires (séparé de la recherche ; vide = recherche) |
 | Mots aléatoires (RAG) | automatique : actif dès qu'au moins un dataset est coché (recherche ou aléatoire) |
 | Suffixe positif / négatif | texte concaténé au prompt |
 | Préfixe positif | texte concaténé au **DÉBUT** du prompt (ex. trigger de LoRA, répété volontairement si besoin) |
 | Batch | **vrai batching** : N images générées en parallèle par prompt (1 envoi ComfyUI = N latents) |
 | Longueur min | force le LLM à enrichir les prompts trop courts |
 | Taille du lot de rédaction | découpe la rédaction en N prompts par appel LLM (vide = tout en un appel) |
+| Recherches forcées | impose au LLM N recherches RAG avant de rédiger (par chunk) |
 | Sous-dossier de sortie | redirige les images dans un sous-dossier de l'output ComfyUI (ex. `batch-prolificN1`) |
 | Température | laissez vide = défaut du modèle, sinon réglez la créativité |
 | Tracer (dataset fine-tuning) | décochez pour ne pas écrire les traces de ce job |
+| Mode test | traces + métriques séparées dans `traces/test/` |
 
 Le panneau de droite affiche la progression et les miniatures. Cliquez sur une image
 pour l'agrandir : naviguez aux **flèches du clavier** (← →) ou aux boutons ‹ ›,
-**Échap** pour fermer. Chaque job peut être **arrêté**, **retiré des traces**,
-**supprimé** (garde les traces) ou **purgé** (job + images + traces).
+**Échap** pour fermer. Chaque job peut être **arrêté** (mis en pause, reprenable),
+**retiré des traces**, **supprimé** (garde les traces) ou **purgé** (job + images +
+traces). Les boutons **« Tout en pause » / « Tout reprendre »** gèlent ou relancent
+toute la file (utile pour libérer la machine).
 
 ## Ajouter un dataset (tags / vocabulaire)
 
@@ -103,6 +109,7 @@ femmes fatales steampunk avec le workflow test-dollamor ».
 - **Images** : dans le dossier de sortie de ComfyUI (`ComfyUI/output`), éventuellement
   dans un sous-dossier si vous renseignez « Sous-dossier de sortie » (ex. `batch-prolificN1`).
 - **Traces** (pour un futur fine-tuning) : dossier `traces/`, supprimables par job.
+  Voir [FINETUNING.md](FINETUNING.md) pour le guide du projet de fine-tuning.
 - **Logs** : console (ou fichier si `logging.file` est renseigné dans `config.yaml`).
 - **Données locales** : `prolific.sqlite` (jobs, images, calibration).
 
@@ -110,7 +117,8 @@ femmes fatales steampunk avec le workflow test-dollamor ».
 
 - « Workflow inconnu » → vérifiez `workflows/manifest.json`.
 - « ComfyUI injoignable » → lancez ComfyUI et vérifiez l'URL dans `config.yaml`.
-- Un job semble bloqué → relancez le service : les jobs orphelins sont marqués stoppés.
+- Un job semble bloqué → relancez le service : les jobs `running` repassent en `paused`
+  (reprise possible), les `queued` sont conservés (« Tout reprendre » pour les relancer).
 - Le RAG ne répond pas → lancez `ollama pull bge-m3` puis `./scripts/index_datasets.sh`.
 
 > Documentation technique (architecture, graphes) : voir [ARCHITECTURE.md](ARCHITECTURE.md).

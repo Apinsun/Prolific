@@ -59,7 +59,7 @@ flowchart TB
 | `prompting.py` | templates, normalisation, dédoublonnage, longueur |
 | `agent.py` | boucle LLM ↔ outils, raffinement, retry JSON, capture du reasoning |
 | `tools.py` | outils `search_terms`, `list_categories`, `random_term` (tool calling) |
-| `orchestrator.py` | machine à états LangGraph, swap VRAM, batching, stop, traces |
+| `orchestrator.py` | machine à états LangGraph, swap VRAM, batching, pré-rédaction, pause/reprise, file FIFO, traces |
 | `workflows.py` | manifest ComfyUI + injection slots (prompt/dims/seeds/batch/prefix) |
 | `traces.py` | traces JSONL (fine-tuning) + suppression |
 | `api.py` | API REST (config, jobs, stop, suppression) |
@@ -91,15 +91,15 @@ sequenceDiagram
     O->>C: soumettre workflow patché (× batch)
     C-->>O: images
     O->>C: libérer VRAM ComfyUI
-    O->>L: (lot suivant) recharger LLM
     O-->>A: job terminé
 ```
 
 Deux modes d'objectif :
-- **« N prompts »** : rédaction par lots de `draft_batch_size` prompts (par défaut tout
-  en un seul lot), chaque lot généré à la suite.
-- **« T minutes »** : boucle *planifier → exécuter → adapter*, avec calibration de la
-  durée moyenne par image.
+- **« N prompts » (count)** : `draft` pré-rédige **tous** les prompts (par chunks de
+  `draft_batch_size`, avec historique anti-répétition), puis `generate` enchaîne toutes
+  les images en **un seul cycle VRAM**.
+- **« T minutes » (duration)** : boucle *planifier → exécuter → adapter*, avec
+  calibration de la durée moyenne par image (rédaction adaptative, lot par lot).
 
 ---
 
@@ -127,10 +127,13 @@ stateDiagram-v2
 - **`finish`** : clôture le job en base.
 
 **Checkpointing** : `SqliteSaver` (`checkpoints.sqlite`), un checkpoint par
-`thread_id = job_id`. *(La vraie reprise après arrêt est en TODO — voir `TODO.md`.)*
+`thread_id = job_id`.
 
-**Stop** : un `threading.Event` consulté entre chaque image → le job se termine
-proprement en `stopped`.
+**Pause / reprise** : `interrupt()` entre deux images → statut `paused` ; `resume`
+relance `graph.invoke(None, thread_id)` depuis le checkpoint (idempotent via
+`images_done`). `pause_all`/`resume_all` gèlent/relancent toute la file. La file est un
+`deque` en mémoire ; au redémarrage, `mark_interrupted` passe `running`→`paused` et
+`resume_all` reconstruit les jobs `queued`/`paused` depuis la base.
 
 ---
 
@@ -172,9 +175,11 @@ flowchart LR
 - Un dataset = un CSV `term, definition, category` (catégorie optionnelle) dans
   `datasets/`, indexé en ChromaDB via `./scripts/index_datasets.sh`.
 - Une collection ChromaDB par dataset (`rag_<nom>`), embeddings Ollama (`bge-m3`).
-- La colonne `category` alimente `list_categories`, `search_terms(category=…)` et
-  `random_term(category=…)` ; les catégories sont stockées dans les métadonnées de la
-  collection (pas de scan).
+- La colonne `category` peut contenir **plusieurs catégories** séparées par `|` ou `;`
+  (`vêtement|traditionnel`) ; stockées en liste dans les métadonnées, filtrées via
+  `$contains`. `list_categories`, `search_terms(category=…)` et
+  `random_term(category=…)` s'appuient dessus. Un filtre de catégorie qui ne donne
+  rien replie automatiquement sur une recherche sans filtre.
 - Le RAG est un **outil de recherche**, pas un garde-fou : aucun prompt n'est rejeté.
 
 ---
@@ -185,11 +190,12 @@ Opt-in (`swap_vram`), pertinent quand LLM et ComfyUI partagent le même GPU.
 
 | Moment | Action |
 |--------|--------|
+| Début de `draft` | `POST /free` ComfyUI → VRAM libérée pour le LLM |
 | Début de `generate` | `ollama stop <model>` → VRAM libérée pour ComfyUI |
 | Fin de `generate` | `POST /free` (`unload_models + free_memory`) |
-| `draft` suivant | le LLM est rechargé implicitement |
 
-Principe : **un seul cycle VRAM par lot** (on rédige tout, puis on génère tout).
+Principe : **un seul cycle VRAM par job** (libérer ComfyUI → rédiger tout → décharger
+le LLM → générer tout → libérer ComfyUI).
 
 > Le **batching** (`batch > 1`) multiplie les latents en parallèle dans ComfyUI :
 > prévoir plus de VRAM (à surveiller selon le modèle et la carte).
@@ -213,7 +219,8 @@ Les colonnes ajoutées après coup sont migrées automatiquement (`ALTER TABLE`)
 
 - **UI web** : `/` (formulaire + suivi, lightbox navigable au clavier). Vanilla JS, pas de build.
 - **API REST** : `/api/config`, `/api/jobs` (POST/GET), `/api/jobs/{id}`,
-  `/api/jobs/{id}/stop`, `/api/jobs/{id}/traces` (DELETE), `/api/jobs/{id}` (DELETE,
+  `/api/jobs/{id}/stop`, `/api/jobs/{id}/resume`, `/api/jobs/pause-all`,
+  `/api/jobs/resume-all`, `/api/jobs/{id}/traces` (DELETE), `/api/jobs/{id}` (DELETE,
   **garde les traces**), `/api/jobs/{id}/purge` (DELETE, tout supprimer),
   `/api/model_temperature`.
 - **MCP** : Streamable HTTP sur `/mcp`. 13 outils : `list_workflows`, `list_datasets`,
@@ -256,8 +263,9 @@ traces:     # enabled, dir
 - ComfyUI injoignable → job `failed`.
 - Échec d'une génération → image `failed`, le lot continue.
 - Stop → `stopped` propre.
-- Au démarrage, les jobs restés `running`/`pending` sont marqués `stopped`
-  (orphelins d'un arrêt du process).
+- Au démarrage, `mark_interrupted` récupère les orphelins : `running` → `paused`
+  (repris via checkpoint), `pending` → `stopped`, `queued` conservé (repris par
+  `resume_all`).
 
 ---
 

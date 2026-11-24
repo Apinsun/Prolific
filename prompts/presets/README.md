@@ -12,6 +12,9 @@ dropdown « Prompt de base » de l'UI et utilisable via l'API/MCP (`preset`).
 
 > Les fichiers dont le nom commence par `_` ou `.` (et `README`) sont ignorés.
 
+Presets fournis : `expert-danbooru`, `minimal`, `cascade` (recherche RAG en cascade
+pour générer des traces multi-hop — voir `FINETUNING.md`).
+
 ## Comment ça marche
 
 Le contenu du fichier est utilisé **tel quel** comme system prompt. Il peut :
