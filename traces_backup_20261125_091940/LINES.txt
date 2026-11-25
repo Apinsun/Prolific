@@ -1,0 +1,3 @@
+     224 drafts.jsonl
+    2866 images.jsonl
+    3090 total
